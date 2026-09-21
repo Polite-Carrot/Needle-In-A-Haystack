@@ -8,7 +8,7 @@ until the needle turns up — then move to a bigger barn.
 Built with [three.js](https://threejs.org) (vendored, MIT). No build step, no
 network calls, no dependencies to install.
 
-**▶ Play it: https://polite-carrot.github.io/Needle-In-A-Haystack/**
+**▶ Play it: https://needleinahaystack.politecarrot.com**
 
 ## How to play
 
@@ -145,6 +145,11 @@ serves from a project subpath. `.nojekyll` stops Pages running it through Jekyll
 **Settings → Pages → Build and deployment → Source: Deploy from a branch**, then
 pick **`main`** and **`/ (root)`**.
 
+`CNAME` points the site at **needleinahaystack.politecarrot.com**; GitHub reads
+it on every deploy, so it has to stay at the repository root. On a custom
+domain the game is served from `/`, which suits the relative paths and gives
+the service worker the whole origin as its scope.
+
 ## Layout
 
 | Path | What it does |
@@ -163,6 +168,7 @@ pick **`main`** and **`/ (root)`**.
 | `sw.js` | Service worker: precaches the shell so the game runs offline |
 | `manifest.webmanifest` | Web app manifest — name, colours, icons, display mode |
 | `assets/` | Polite Carrot logo and wordmark, plus the app icon in SVG and PNG |
+| `CNAME` | The custom domain GitHub Pages serves the game from |
 | `vendor/three.min.js` | three.js r160 (MIT, see `vendor/three.LICENSE`) |
 
 The original 2D tap version lives in this repo's git history, before the 3D rework.
