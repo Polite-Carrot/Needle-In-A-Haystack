@@ -54,6 +54,13 @@ NIAH.game = (function () {
   const RETIRE_AT = 8;            // earliest barn you are allowed to retire from
   const OFFLINE_CAP = 4 * 3600;   // the crew work at most four hours unattended
   const OFFLINE_MIN = 120;        // under two minutes away is not worth a card
+
+  /* The Daily Barn is the same barn and the same kit for everybody, so the
+     only variable is how fast you find it. Barn 6 is ten piles; a Steel Spade
+     clears the needle's pile in one load, and the Lv 2 detector gives you
+     distance to the nearest five metres — enough to triangulate, not enough
+     to be told the answer, especially with scrap metal in the hay. */
+  const DAILY = { level: 6, shovel: 4, gear: { boots: 2, sense: 2, sift: 0, hands: 0 } };
   const T = THREE;
 
   /* ---------------------------------------------------------- state */
@@ -72,6 +79,8 @@ NIAH.game = (function () {
     shelf: {},                 // junk id -> { n, first } : the Barn Shelf
     shelfDone: false,
     prestige: { rosettes: 0, retires: 0, best: 0 },
+    daily: { day: '', bestMs: 0, lastWon: '', streak: 0, bestStreak: 0, wins: 0 },
+    haptics: true,
     lastSeen: Date.now(),
     started: Date.now(),
     camera: 'follow',
@@ -85,9 +94,47 @@ NIAH.game = (function () {
   let held = false, lastTime = 0, elapsed = 0;
   let digSfx = 0, saveTimer = 0, handBank = 0, senseTimer = 0, actionLock = 0, stickActive = false;
   let wardrobeReturn = null;
+  /* While a Daily Barn is being played the campaign's own level, kit and coins
+     are held here and swapped back on the way out — so the daily never spends
+     or earns anything on the farm, and a save written mid-daily is the
+     campaign's, not the daily's. */
+  let dailySnap = null;
+  let dailyRun = null;
   const intro = { t: 0, done: false };
   const keys = Object.create(null);
   const tmpV = new T.Vector3();
+
+  /* ----------------------------------------------------------- rng */
+
+  /* The campaign rolls its barns off Math.random. The Daily Barn needs every
+     player to get the identical barn, so it rolls off a seeded generator
+     instead — same date, same seed, same piles, needle and scrap. */
+  function hashSeed(str) {
+    let h = 2166136261 >>> 0;
+    for (let i = 0; i < str.length; i++) {
+      h ^= str.charCodeAt(i);
+      h = Math.imul(h, 16777619) >>> 0;
+    }
+    return h >>> 0;
+  }
+  function mulberry32(a) {
+    return function () {
+      a = (a + 0x6D2B79F5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  /* Local date, so the barn turns over at the player's own midnight. */
+  function dayKey(d) {
+    const t = d || new Date();
+    return t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0')
+      + '-' + String(t.getDate()).padStart(2, '0');
+  }
+  function shiftDay(key, days) {
+    const [y, m, d] = key.split('-').map(Number);
+    return dayKey(new Date(y, m - 1, d + days));
+  }
 
   /* ------------------------------------------------------- economy */
 
@@ -118,9 +165,12 @@ NIAH.game = (function () {
 
   /* ---------------------------------------------------- persistence */
 
+  function persistable() {
+    return dailySnap ? Object.assign({}, state, dailySnap) : state;
+  }
   function save() {
     state.lastSeen = Date.now();
-    try { localStorage.setItem(SAVE_KEY, JSON.stringify(state)); } catch (e) { /* private mode */ }
+    try { localStorage.setItem(SAVE_KEY, JSON.stringify(persistable())); } catch (e) { /* private mode */ }
   }
   function readSave() {
     try {
@@ -156,6 +206,9 @@ NIAH.game = (function () {
     state.junkFound = data.junkFound || 0;
     state.shelfDone = !!data.shelfDone;
     state.prestige = Object.assign({ rosettes: 0, retires: 0, best: 0 }, data.prestige || {});
+    state.daily = Object.assign({ day: '', bestMs: 0, lastWon: '', streak: 0, bestStreak: 0, wins: 0 }, data.daily || {});
+    state.haptics = data.haptics !== false;
+    NIAH.haptics.on = state.haptics;
     if (!Array.isArray(state.owned) || !state.owned.length) state.owned = [0];
     state.shovel = Math.max(0, Math.min(D.SHOVELS.length - 1, state.shovel | 0));
     NIAH.audio.muted = !!state.muted;
@@ -168,28 +221,29 @@ NIAH.game = (function () {
 
   /* --------------------------------------------------- level set-up */
 
-  function rollJunkType() {
+  function rollJunkType(rnd) {
     const table = NIAH.data.JUNK;
     const total = table.reduce((a, j) => a + j.weight, 0);
-    let roll = Math.random() * total;
+    let roll = rnd() * total;
     for (const j of table) { roll -= j.weight; if (roll <= 0) return j.id; }
     return table[0].id;
   }
 
-  function makeJunk(count) {
+  function makeJunk(count, rnd) {
+    rnd = rnd || Math.random;
     const out = [];
     let id = 0;
     for (let pile = 0; pile < count; pile++) {
       // most piles hide one thing, some two, some nothing at all
-      const n = Math.random() < 0.18 ? 0 : Math.random() < 0.75 ? 1 : 2;
+      const n = rnd() < 0.18 ? 0 : rnd() < 0.75 ? 1 : 2;
       for (let k = 0; k < n; k++) {
         out.push({
           id: id++,
-          type: rollJunkType(),
+          type: rollJunkType(rnd),
           pile,
-          depth: 0.12 + Math.random() * 0.8,
-          ox: (Math.random() - 0.5) * 3.6,
-          oz: (Math.random() - 0.5) * 3.6,
+          depth: 0.12 + rnd() * 0.8,
+          ox: (rnd() - 0.5) * 3.6,
+          oz: (rnd() - 0.5) * 3.6,
           out: false,        // dug up and lying on the floor
           taken: false,
         });
@@ -198,22 +252,23 @@ NIAH.game = (function () {
     return out;
   }
 
-  function makeLevel(level) {
+  function makeLevel(level, rnd) {
+    rnd = rnd || Math.random;
     const count = pileCount(level);
     const hay = pileHay(level);
     const piles = [];
     for (let i = 0; i < count; i++) piles.push({ name: LETTERS[i], total: hay, hay: hay, sifted: 0 });
     return {
-      junk: makeJunk(count),
+      junk: makeJunk(count, rnd),
       junkFound: 0,
       level,
       piles,
       // the needle has a place inside its pile: how far down, and whereabouts
       needle: {
-        pile: Math.floor(Math.random() * count),
-        depth: 0.3 + Math.random() * 0.6,        // fraction of the pile dug before it shows
-        ox: (Math.random() - 0.5) * 3.4,
-        oz: (Math.random() - 0.5) * 3.4,
+        pile: Math.floor(rnd() * count),
+        depth: 0.3 + rnd() * 0.6,                // fraction of the pile dug before it shows
+        ox: (rnd() - 0.5) * 3.4,
+        oz: (rnd() - 0.5) * 3.4,
         revealed: false,
       },
       load: [],
@@ -276,6 +331,7 @@ NIAH.game = (function () {
     NIAH.helpers.setVisible(true);
     phase = 'play';
     intro.done = true;
+    dailyClock(true);
   }
 
   function updateIntro(dt) {
@@ -355,6 +411,7 @@ NIAH.game = (function () {
     NIAH.world.showNeedle(n.pile, n.ox, n.oz);
     NIAH.audio.ping();
     NIAH.audio.coin();
+    NIAH.haptics.reveal();
     NIAH.ui.setSense('✨ Something glinted in pile ' + data.name);
     save();
   }
@@ -399,18 +456,25 @@ NIAH.game = (function () {
       if (d > 3.0) return;
       j.taken = true;
       const t = junkType(j);
-      const coins = Math.max(1, Math.floor(t.value * coinsPerHay()));
-      state.coins += coins;
-      state.junkFound = (state.junkFound || 0) + 1;
-      lv.junkFound = (lv.junkFound || 0) + 1;
-      const firstEver = shelfAdd(t.id);
+      const daily = dailyActive();
+      const coins = daily ? 0 : Math.max(1, Math.floor(t.value * coinsPerHay()));
+      let firstEver = false;
+      if (!daily) {
+        state.coins += coins;
+        state.junkFound = (state.junkFound || 0) + 1;
+        lv.junkFound = (lv.junkFound || 0) + 1;
+        firstEver = shelfAdd(t.id);
+      }
       const pos = NIAH.world.clearJunkMesh(j.id);
       if (pos) NIAH.world.hayBurst(pos.x, pos.y + 0.4, pos.z, 5);
       NIAH.audio.coin();
-      NIAH.ui.bumpCoins();
-      NIAH.ui.toast(t.emoji + ' ' + t.name + '  +' + NIAH.ui.fmt(coins)
-        + (firstEver ? '  ·  new on the shelf!' : '  ·  ' + t.line));
-      checkShelfComplete();
+      NIAH.haptics.junk();
+      if (!daily) NIAH.ui.bumpCoins();
+      NIAH.ui.toast(daily
+        ? t.emoji + ' ' + t.name + '  ·  not the needle'
+        : t.emoji + ' ' + t.name + '  +' + NIAH.ui.fmt(coins)
+          + (firstEver ? '  ·  new on the shelf!' : '  ·  ' + t.line));
+      if (!daily) checkShelfComplete();
       save();
     });
   }
@@ -444,6 +508,105 @@ NIAH.game = (function () {
     NIAH.ui.toast('🗄️ Barn Shelf complete — 🪙 ' + NIAH.ui.fmt(bonus) + ' and the Tin Can Hat is yours');
   }
 
+  /* --------------------------------------------------- daily barn */
+
+  const dailyActive = () => !!dailySnap;
+
+  /* Wall clock, not frame time: update()'s dt is clamped at 80ms, so a phone
+     dropping frames would otherwise clock a barn faster than it really took.
+     The clock stops whenever the run is not actually in your hands. */
+  function dailyElapsed() {
+    if (!dailyRun) return 0;
+    return dailyRun.accum + (dailyRun.running ? performance.now() - dailyRun.since : 0);
+  }
+  function dailyClock(running) {
+    if (!dailyRun || dailyRun.finished || dailyRun.running === running) return;
+    if (running) dailyRun.since = performance.now();
+    else dailyRun.accum += performance.now() - dailyRun.since;
+    dailyRun.running = running;
+  }
+
+  function dailyToday() {
+    const d = state.daily || (state.daily = { day: '', bestMs: 0, lastWon: '', streak: 0, bestStreak: 0, wins: 0 });
+    const key = dayKey();
+    if (d.day !== key) { d.day = key; d.bestMs = 0; }   // yesterday's time is not today's
+    // a missed day breaks the run
+    if (d.lastWon && d.lastWon !== key && d.lastWon !== shiftDay(key, -1)) d.streak = 0;
+    return d;
+  }
+
+  function dailyInfo() {
+    const d = dailyToday();
+    return {
+      day: d.day,
+      bestMs: d.bestMs,
+      doneToday: d.lastWon === d.day,
+      streak: d.streak,
+      bestStreak: d.bestStreak,
+      wins: d.wins,
+      level: DAILY.level,
+      piles: pileCount(DAILY.level),
+      shovel: D.SHOVELS[DAILY.shovel].name,
+    };
+  }
+
+  function startDaily() {
+    if (dailyActive()) return;
+    const d = dailyToday();
+    dailySnap = {
+      level: state.level, shovel: state.shovel, owned: state.owned,
+      gear: state.gear, lv: state.lv, coins: state.coins,
+    };
+    state.level = DAILY.level;
+    state.shovel = DAILY.shovel;
+    state.owned = [DAILY.shovel];
+    state.gear = Object.assign({}, DAILY.gear);
+    state.lv = makeLevel(DAILY.level, mulberry32(hashSeed('niah-daily-' + d.day)));
+    dailyRun = { accum: 0, since: 0, running: false, finished: false };
+    NIAH.helpers.sync(0);
+    NIAH.ui.screen('menu', false);
+    NIAH.ui.closeShop();
+    NIAH.ui.setDailyMode(true);
+    startLevel(true);
+  }
+
+  /* Leaving without the needle records nothing. */
+  function endDaily() {
+    if (!dailyActive()) return;
+    Object.assign(state, dailySnap);
+    dailySnap = null;
+    dailyRun = null;
+    NIAH.ui.setDailyMode(false);
+    NIAH.helpers.sync(state.gear.hands);
+    NIAH.player.applyLook(state.look, state.shovel);
+    save();
+  }
+
+  function dailyWin() {
+    const d = dailyToday();
+    const ms = Math.round(dailyElapsed());
+    const first = d.lastWon !== d.day;
+    const improved = !d.bestMs || ms < d.bestMs;
+    if (improved) d.bestMs = ms;
+    if (first) {
+      d.streak = d.lastWon === shiftDay(d.day, -1) ? d.streak + 1 : 1;
+      d.bestStreak = Math.max(d.bestStreak || 0, d.streak);
+      d.wins = (d.wins || 0) + 1;
+      d.lastWon = d.day;
+    }
+    /* The bounty rides on the farm you actually have, so it stays worth
+       collecting however far along you are — and only the first run counts. */
+    const campaignLevel = dailySnap ? dailySnap.level : state.level;
+    const bounty = first
+      ? Math.max(500, Math.floor(pileHay(campaignLevel) * Math.pow(1.25, dailySnap.gear.sift)
+          * Math.pow(1.85, campaignLevel - 1) * prestigeMult() * 0.75))
+      : 0;
+    if (bounty) dailySnap.coins += bounty;
+    dailyRun.finished = true;
+    save();
+    return { ms, best: d.bestMs, improved, first, bounty, streak: d.streak, bestStreak: d.bestStreak };
+  }
+
   /* ------------------------------------------------------- prestige */
 
   const retireGain = () => Math.max(0, state.level - 1);
@@ -453,7 +616,7 @@ NIAH.game = (function () {
      the wardrobe and the shelf stay. One rosette per needle found, and they
      pay out for good in coins, dig rate and earlier shovel unlocks. */
   function retire() {
-    if (!canRetire()) { NIAH.audio.nope(); return; }
+    if (!canRetire()) { NIAH.audio.nope(); NIAH.haptics.nope(); return; }
     const gain = retireGain();
     state.prestige.rosettes += gain;
     state.prestige.retires++;
@@ -564,6 +727,7 @@ NIAH.game = (function () {
     if (digSfx <= 0) {
       digSfx = 0.26;
       NIAH.audio.dig();
+      NIAH.haptics.dig();
       const m = NIAH.world.piles[pileIndex];
       NIAH.world.hayBurst(m.x, 2 + Math.random(), m.z, 3);
     }
@@ -572,7 +736,7 @@ NIAH.game = (function () {
 
   function dump() {
     const lv = state.lv;
-    if (lv.loadTotal <= 0) { NIAH.audio.nope(); return; }
+    if (lv.loadTotal <= 0) { NIAH.audio.nope(); NIAH.haptics.nope(); return; }
     const c = NIAH.world.cart;
     let gained = 0;
 
@@ -586,7 +750,7 @@ NIAH.game = (function () {
       state.totalHay += entry.amount;
     }
 
-    state.coins += Math.max(1, Math.floor(gained));
+    if (!dailyActive()) state.coins += Math.max(1, Math.floor(gained));
     state.totalLoads++;
     lv.load = [];
     lv.loadTotal = 0;
@@ -599,6 +763,7 @@ NIAH.game = (function () {
     NIAH.world.hayBurst(c.x, NIAH.world.cart.beltTop + 1.4, c.z, 14);
     NIAH.audio.dump();
     NIAH.audio.coin();
+    NIAH.haptics.dump();
     NIAH.ui.bumpCoins();
 
     save();
@@ -629,7 +794,7 @@ NIAH.game = (function () {
       if (before === 0 && data.sifted > 0) lv.opened++;
       lv.sifted += amount;
       state.totalHay += amount;
-      state.coins += Math.max(1, Math.floor(amount * coinsPerHay()));
+      if (!dailyActive()) state.coins += Math.max(1, Math.floor(amount * coinsPerHay()));
       NIAH.world.sifterLoad(2);
     },
   };
@@ -703,35 +868,122 @@ NIAH.game = (function () {
 
   /* ------------------------------------------------------- win / flow */
 
+  /* --------------------------------------------------------- finale */
+
+  /* Forty-odd seconds of searching used to end with a card sliding in. Now the
+     farmer holds the thing up, the barn goes quiet and slow for a beat, and
+     the card waits its turn. Tapping skips straight to it. */
+  const finale = { t: 0, burst: 0, data: null, ax: 0, az: 1 };
+
+  function finaleScale(t) {
+    if (t < 0.45) return 1 - 0.72 * (t / 0.45);          // drop into slow motion
+    if (t < 1.65) return 0.28;                            // hold there
+    return 0.28 + 0.72 * Math.min(1, (t - 1.65) / 0.75);  // and back up to speed
+  }
+
   function winLevel() {
-    if (phase === 'win') return;
-    phase = 'win';
+    if (phase === 'finale' || phase === 'win') return;
     const lv = state.lv;
-    state.needles++;
-    const bonus = Math.max(50, Math.floor(pileHay(state.level) * coinsPerHay() * 0.6));
-    state.coins += bonus;
-
     const pos = NIAH.world.needlePosition();
-    if (pos) NIAH.world.hayBurst(pos.x, pos.y + 1, pos.z, 26);
-    NIAH.world.hideNeedle();
-    NIAH.audio.fanfare();
-    NIAH.player.setAction('idle');
 
-    const secs = Math.round((Date.now() - lv.startedAt) / 1000);
-    NIAH.ui.showWin({
-      text: `You pulled it out of pile ${lv.piles[lv.needle.pile].name}, `
-        + `${Math.round(lv.needle.depth * 100)}% of the way down. Barn ${lv.level} is done.`,
-      rows: [
-        ['Needle bounty', '🪙 ' + NIAH.ui.fmt(bonus)],
-        ['Hay sifted here', NIAH.ui.fmt(lv.sifted)],
-        ['Piles opened', lv.opened + ' of ' + lv.piles.length],
-        ['Odds and ends', (lv.junkFound || 0) + ' dug up'],
-        ['Time in the barn', secs < 60 ? secs + 's' : Math.floor(secs / 60) + 'm ' + (secs % 60) + 's'],
-        ['Barn Shelf', shelfCount() + ' of ' + NIAH.data.JUNK.length + ' kinds'],
-        ['Next barn pays', '×1.85 coins'],
-      ],
-    });
-    save();
+    if (dailyActive()) {
+      dailyClock(false);
+      finale.data = { daily: dailyWin() };
+    } else {
+      state.needles++;
+      const bonus = Math.max(50, Math.floor(pileHay(state.level) * coinsPerHay() * 0.6));
+      state.coins += bonus;
+      const secs = Math.round((Date.now() - lv.startedAt) / 1000);
+      finale.data = {
+        text: `You pulled it out of pile ${lv.piles[lv.needle.pile].name}, `
+          + `${Math.round(lv.needle.depth * 100)}% of the way down. Barn ${lv.level} is done.`,
+        rows: [
+          ['Needle bounty', '🪙 ' + NIAH.ui.fmt(bonus)],
+          ['Hay sifted here', NIAH.ui.fmt(lv.sifted)],
+          ['Piles opened', lv.opened + ' of ' + lv.piles.length],
+          ['Odds and ends', (lv.junkFound || 0) + ' dug up'],
+          ['Time in the barn', secs < 60 ? secs + 's' : Math.floor(secs / 60) + 'm ' + (secs % 60) + 's'],
+          ['Barn Shelf', shelfCount() + ' of ' + NIAH.data.JUNK.length + ' kinds'],
+          ['Next barn pays', '×1.85 coins'],
+        ],
+      };
+      save();
+    }
+
+    phase = 'finale';
+    finale.t = 0;
+    finale.burst = 0;
+
+    /* You grab the needle standing against the pile you just dug, so a camera
+       swung round to your face would be looking through six metres of hay.
+       Turn away from the pile first and shoot over the open floor instead. */
+    const p = NIAH.player.position;
+    let ax = pos ? p.x - pos.x : 0;
+    let az = pos ? p.z - pos.z : 1;
+    const len = Math.hypot(ax, az);
+    if (len < 0.2) { ax = 0; az = 1; }
+    else { ax /= len; az /= len; }
+    finale.ax = ax;
+    finale.az = az;
+    NIAH.player.faceTowards(p.x + ax, p.z + az);
+    if (pos) NIAH.world.hayBurst(pos.x, pos.y + 1, pos.z, 20);
+    NIAH.world.hideNeedle();
+    NIAH.player.setAction('hold');
+    NIAH.player.holdNeedle(true);
+    NIAH.ui.hudOn(false);
+    NIAH.ui.setPrompt('');
+    NIAH.ui.setSense('');
+    NIAH.audio.ping();
+    NIAH.haptics.grab();
+
+    // someone who has asked for less motion does not want a swooping camera
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      NIAH.audio.fanfare();
+      NIAH.haptics.win();
+      endFinale();
+    }
+  }
+
+  function updateFinale(dt) {
+    finale.t += dt;
+    const t = finale.t;
+    const p = NIAH.player.position;
+    const cam = NIAH.world.camera;
+
+    // keep the pose animating while everything else is held still
+    NIAH.player.update(dt, null, NIAH.world, { locked: true });
+
+    /* In front of the farmer, pushing in on the raised hand and drifting a
+       little to one side, then easing back out as normal speed returns. */
+    const base = Math.atan2(finale.ax, finale.az);
+    const ang = base + (smooth(t, 0, 2.7) - 0.5) * 0.8;
+    const r = 6.2 - smooth(t, 0.15, 1.5) * 2.9 + smooth(t, 1.75, 2.75) * 1.0;
+    // just under eye level, so the shot looks up at the face and the raised
+    // hand rather than down onto the brim of the hat
+    const h = 2.55 - smooth(t, 0.15, 1.6) * 0.3;
+    cam.position.set(p.x + Math.sin(ang) * r, h, p.z + Math.cos(ang) * r);
+    cam.lookAt(p.x, 2.4 + smooth(t, 0.3, 1.6) * 0.5, p.z);
+
+    if (t > 0.85 && finale.burst === 0) {
+      finale.burst = 1;
+      NIAH.audio.fanfare();
+      NIAH.haptics.win();
+      NIAH.world.hayBurst(p.x, 3.4, p.z, 28);
+    }
+    if (t > 1.25 && finale.burst === 1) {
+      finale.burst = 2;
+      NIAH.world.hayBurst(p.x, 4.2, p.z, 22);
+    }
+    if (t > 2.75) endFinale();
+  }
+
+  function endFinale() {
+    if (phase !== 'finale') return;
+    phase = 'win';
+    NIAH.player.holdNeedle(false);
+    NIAH.player.setAction('idle');
+    if (finale.data && finale.data.daily) NIAH.ui.showDailyResult(finale.data.daily, dailyInfo());
+    else NIAH.ui.showWin(finale.data);
   }
 
   function nextBarn() {
@@ -756,7 +1008,9 @@ NIAH.game = (function () {
   }
 
   function quitToMenu() {
+    endDaily();
     save();
+    NIAH.ui.screen('dailyCard', false);
     NIAH.helpers.setVisible(false);
     phase = 'menu';
     NIAH.ui.screen('pause', false);
@@ -768,8 +1022,8 @@ NIAH.game = (function () {
   }
 
   function pause(on) {
-    if (on && phase === 'play') { phase = 'paused'; NIAH.ui.screen('pause', true); save(); }
-    else if (!on && phase === 'paused') { phase = 'play'; NIAH.ui.screen('pause', false); NIAH.ui.closeShop(); }
+    if (on && phase === 'play') { phase = 'paused'; dailyClock(false); NIAH.ui.screen('pause', true); save(); }
+    else if (!on && phase === 'paused') { phase = 'play'; dailyClock(true); NIAH.ui.screen('pause', false); NIAH.ui.closeShop(); }
   }
 
   /* -------------------------------------------------------- shopping */
@@ -781,13 +1035,15 @@ NIAH.game = (function () {
       NIAH.player.applyLook(state.look, i);
       if (state.lv && state.lv.loadTotal > capacity()) trimLoad();
       NIAH.audio.buy();
+      NIAH.haptics.buy();
     } else {
-      if (state.level < unlockAt(sh) || state.coins < sh.price) { NIAH.audio.nope(); return; }
+      if (state.level < unlockAt(sh) || state.coins < sh.price) { NIAH.audio.nope(); NIAH.haptics.nope(); return; }
       state.coins -= sh.price;
       state.owned.push(i);
       state.shovel = i;
       NIAH.player.applyLook(state.look, i);
       NIAH.audio.buy();
+      NIAH.haptics.buy();
     }
     save();
     NIAH.ui.renderShop(true);
@@ -809,12 +1065,13 @@ NIAH.game = (function () {
 
   function buyGear(key) {
     const g = D.GEAR[key];
-    if (state.gear[key] >= g.max) { NIAH.audio.nope(); return; }
+    if (state.gear[key] >= g.max) { NIAH.audio.nope(); NIAH.haptics.nope(); return; }
     const price = gearPrice(key);
-    if (state.coins < price) { NIAH.audio.nope(); return; }
+    if (state.coins < price) { NIAH.audio.nope(); NIAH.haptics.nope(); return; }
     state.coins -= price;
     state.gear[key]++;
     NIAH.audio.buy();
+    NIAH.haptics.buy();
     if (key === 'hands' && state.lv) {
       NIAH.helpers.sync(state.gear.hands);
       NIAH.helpers.setVisible(phase === 'play' || phase === 'paused');
@@ -855,7 +1112,7 @@ NIAH.game = (function () {
   function buyCosmetic(kind, id) {
     const item = NIAH.cosmetics.byId(NIAH.cosmetics.listFor(kind), id);
     if (!ownsCosmetic(kind, id)) {
-      if (cosmeticLocked(kind, id) || state.coins < item.price) { NIAH.audio.nope(); return; }
+      if (cosmeticLocked(kind, id) || state.coins < item.price) { NIAH.audio.nope(); NIAH.haptics.nope(); return; }
       state.coins -= item.price;
       state.wardrobe[kind].push(id);
     }
@@ -864,6 +1121,7 @@ NIAH.game = (function () {
     NIAH.wardrobe.preview(state.look, state.shovel);
     if (state.lv) NIAH.player.setLoadVisual(state.lv.loadTotal / capacity());
     NIAH.audio.buy();
+    NIAH.haptics.buy();
     save();
     NIAH.ui.renderWardrobe(true);
   }
@@ -904,6 +1162,14 @@ NIAH.game = (function () {
     save();
   }
 
+  function toggleHaptics() {
+    state.haptics = !state.haptics;
+    NIAH.haptics.on = state.haptics;
+    if (state.haptics) NIAH.haptics.ui();
+    NIAH.ui.setHapticsLabel(state.haptics);
+    save();
+  }
+
   function toggleSound() {
     NIAH.audio.muted = !NIAH.audio.muted;
     state.muted = NIAH.audio.muted;
@@ -922,6 +1188,7 @@ NIAH.game = (function () {
 
   function update(dt) {
     if (phase === 'intro') { updateIntro(dt); return; }
+    if (phase === 'finale') { updateFinale(dt); return; }
     if (phase !== 'play') {
       if (phase === 'menu') updateMenuCamera(dt);
       if (phase === 'wardrobe') NIAH.wardrobe.update(dt);
@@ -932,6 +1199,8 @@ NIAH.game = (function () {
     const pileIndex = nearestPile();
     const atCart = nearCart();
     let digging = false;
+
+    if (dailyRun) NIAH.ui.setDailyTimer(dailyElapsed());
 
     actionLock = Math.max(0, actionLock - dt);
     if (held && pileIndex !== null && lv.loadTotal < capacity()) {
@@ -1003,7 +1272,7 @@ NIAH.game = (function () {
       if (phase === 'wardrobe') {
         NIAH.wardrobe.render();
       } else {
-        NIAH.world.update(dt, elapsed);
+        NIAH.world.update(phase === 'finale' ? dt * finaleScale(finale.t) : dt, elapsed);
         NIAH.world.render();
       }
     } catch (err) {
@@ -1028,6 +1297,7 @@ NIAH.game = (function () {
     NIAH.audio.wake();
     held = true;
     if (phase === 'intro') { skipIntro(); return; }
+    if (phase === 'finale') { endFinale(); return; }
     if (phase !== 'play') return;
     if (grabNeedle()) return;
     if (nearCart() && state.lv.loadTotal > 0) dump();
@@ -1172,13 +1442,16 @@ NIAH.game = (function () {
     buildWorldForLevel();
     const L = NIAH.world.layout;
     NIAH.player.place(0, L.doorZ + 9, Math.PI);
+    NIAH.haptics.on = state.haptics !== false;
     NIAH.ui.setCameraLabel(state.camera);
+    NIAH.ui.setHapticsLabel(state.haptics !== false);
     NIAH.ui.setMenu(saved);
     NIAH.ui.setOffline(away);
     bindInput(canvas);
 
     phase = 'menu';
     NIAH.ui.screen('menu', true);
+    NIAH.ui.setDailyNote(dailyInfo());
     lastTime = performance.now();
     requestAnimationFrame(frame);
     // the barn is built and the first frame is scheduled — let the boot
@@ -1195,7 +1468,8 @@ NIAH.game = (function () {
     openWardrobe, closeWardrobe, buyCosmetic, ownsCosmetic, cosmeticLocked, cosmeticGate,
     capacity, digRate, coinsPerHay, moveSpeed,
     retire, openRetire, canRetire, retireGain, prestigeMult, prestigeGrunt, rosettes, unlockAt,
-    shelfCount, shelfComplete, claimOffline,
+    shelfCount, shelfComplete, claimOffline, toggleHaptics,
+    startDaily, endDaily, dailyInfo, dailyActive, dailyElapsed, skipFinale: endFinale,
     get phase() { return phase; },
   };
 })();

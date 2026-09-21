@@ -222,6 +222,21 @@ NIAH.player = (function () {
       parts.armL.rotation.x = -0.3 + d * 0.9;
       parts.hips.rotation.x = 0.16 + d * 0.12;
       parts.shovel.rotation.x = -0.15 - d * 0.5;
+    } else if (action === 'hold') {
+      // arm swings up and settles, with a small proud sway
+      digPhase += dt * 3.4;
+      const raise = Math.min(1, digPhase);
+      const e = raise * raise * (3 - 2 * raise);
+      const sway = Math.sin(digPhase * 1.6) * 0.05 * e;
+      parts.armR.rotation.x = -e * 2.75 + sway;
+      parts.armR.rotation.z = -e * 0.22;
+      parts.armL.rotation.x = e * 0.45;
+      parts.hips.rotation.x = -e * 0.14;
+      parts.head.rotation.x = -e * 0.2;
+      /* The needle hangs off the arm, so it inherits the arm's rotation and
+         would end up pointing at the floor. Cancel that out and it stays
+         upright in the hand however far the arm has swung. */
+      if (parts.heldNeedle) parts.heldNeedle.rotation.x = -parts.armR.rotation.x - 0.22;
     } else if (action === 'dump') {
       digPhase += dt * 5;
       const d = Math.sin(Math.min(Math.PI, digPhase));
@@ -232,7 +247,9 @@ NIAH.player = (function () {
     } else {
       digPhase = 0;
       parts.armR.rotation.x = -swing * 0.65;
+      parts.armR.rotation.z += (0 - parts.armR.rotation.z) * Math.min(1, dt * 8);
       parts.armL.rotation.x = swing * 0.65;
+      parts.head.rotation.x += (0 - parts.head.rotation.x) * Math.min(1, dt * 8);
       parts.hips.rotation.x += (0 - parts.hips.rotation.x) * Math.min(1, dt * 8);
       parts.shovel.rotation.x += (CARRY - parts.shovel.rotation.x) * Math.min(1, dt * 8);
     }
@@ -279,11 +296,43 @@ NIAH.player = (function () {
 
   function nudgeCamera(dx) { camYaw -= dx; }
 
+  function faceTowards(x, z) {
+    yaw = Math.atan2(x - pos.x, z - pos.z);
+  }
+
   /* ----------------------------------------------------------- state */
 
   function setAction(a) {
     if (action !== a) digPhase = 0;
     action = a;
+  }
+
+  /* The needle, pinched between finger and thumb and held up to the light.
+     The shovel goes out of sight while it is up — one prop at a time. */
+  function holdNeedle(on) {
+    if (on && !parts.heldNeedle) {
+      const g = new T.Group();
+      const steel = new T.MeshLambertMaterial({ color: 0xeef3f7, flatShading: true });
+      const shaft = new T.Mesh(new T.CylinderGeometry(0.024, 0.008, 0.62, 6), steel);
+      shaft.position.y = 0.3;
+      const eye = new T.Mesh(new T.TorusGeometry(0.05, 0.019, 6, 10), steel);
+      eye.position.y = 0.6;
+      eye.rotation.y = Math.PI / 2;
+      const glow = new T.PointLight(0xfff0c0, 9, 7, 2);
+      glow.position.y = 0.42;
+      g.add(shaft, eye, glow);
+      g.position.set(0.02, -0.72, 0.04);
+      parts.armR.add(g);
+      parts.heldNeedle = g;
+    } else if (!on && parts.heldNeedle) {
+      parts.armR.remove(parts.heldNeedle);
+      parts.heldNeedle.traverse((o) => {
+        if (o.geometry) o.geometry.dispose();
+        if (o.material) o.material.dispose();
+      });
+      parts.heldNeedle = null;
+    }
+    if (parts.shovel) parts.shovel.visible = !on;
   }
   function setLoadVisual(fraction) {
     if (!parts.load) return;
@@ -303,6 +352,7 @@ NIAH.player = (function () {
 
   return {
     create, buildRig, place, update, updateCamera, nudgeCamera, setAction, setLoadVisual, applyLook,
+    holdNeedle, faceTowards,
     get position() { return pos; },
     get yaw() { return yaw; },
     get speed() { return speedNow; },

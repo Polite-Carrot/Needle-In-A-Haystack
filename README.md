@@ -68,6 +68,16 @@ network calls, no dependencies to install.
   and the Heirloom Spade are earned by retiring and by filling the Barn Shelf.
   Cosmetic only — every dig stat still comes from the shop. Patterns are drawn procedurally at
   runtime, so there are still no image assets in the repo.
+- **The Daily Barn.** One barn a day, identical for everyone who plays it —
+  the same ten piles, the same needle, the same scrap in the hay, generated
+  from a seeded RNG keyed to the date. Fixed kit (a Steel Spade and a Lv 2
+  detector), no coins and no shop: the only variable is the clock, which runs
+  on wall time so a slow phone cannot post a fast lap. Your best time for the
+  day is kept, along with a run of consecutive days, and the first win each day
+  pays a bounty scaled to the farm you actually have. It never touches your
+  campaign — level, coins, gear and Barn Shelf are all held aside and put back
+  when you leave, so a daily can be replayed for a better time without
+  becoming a place to farm.
 - **The Barn Shelf.** Every kind of odd and end you dig out gets a slot of its
   own, with a running count and the barn the first one came out of. Fill all six
   and there is a one-off bounty and the **Tin Can Hat**.
@@ -82,6 +92,14 @@ network calls, no dependencies to install.
   in the yard — a welcome-back card on the menu, worth 8% of your current barn
   per hand per hour, capped at one barn and at four hours. They never touch your
   piles, so the barn is exactly where you left it.
+- **A proper win moment.** Grabbing the needle drops the barn into slow motion,
+  turns the farmer away from the pile, has them hold the thing up to the light
+  while hay rains down, and only then brings up the card. Tap to skip it; it is
+  skipped outright for anyone who has asked for reduced motion.
+- **Vibration**, on the dig, the reveal, the grab and every refusal. Android
+  only — iOS Safari has never supported `navigator.vibrate`, so on an iPhone
+  every call is a silent no-op and the toggle is hidden rather than offering
+  a setting that does nothing.
 - **Installable.** A web app manifest, icons and a service worker that precaches
   the whole game, so it can be added to a home screen and played with no signal.
 - Main menu, pause menu, first-person / follow camera toggle, synthesised sound
@@ -141,6 +159,7 @@ pick **`main`** and **`/ (root)`**.
 | `js/wardrobe.js` | The My Farmer preview scene and its auto-framing |
 | `js/helpers.js` | Hired farmhands: their round trip, steering and animation |
 | `js/audio.js` | WebAudio sound effects |
+| `js/haptics.js` | Vibration patterns, and the feature test that hides them on iOS |
 | `sw.js` | Service worker: precaches the shell so the game runs offline |
 | `manifest.webmanifest` | Web app manifest — name, colours, icons, display mode |
 | `assets/` | Polite Carrot logo and wordmark, plus the app icon in SVG and PNG |

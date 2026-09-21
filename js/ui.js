@@ -27,6 +27,9 @@ NIAH.ui = (function () {
       'btnCamera', 'btnSound', 'prestigeLine', 'offlineCard', 'offlineText', 'offlineCoins',
       'btnMenuRetire', 'btnPauseRetire', 'btnWinRetire', 'retire', 'retireText', 'retireStats',
       'shelf', 'shelfGrid', 'shelfSub', 'shelfFoot',
+      'dailyCard', 'dailyHead', 'dailyText', 'dailyStats', 'dailyArt', 'btnDailyGo',
+      'dailyNote', 'dailyTimer', 'dailyClock', 'coinBox', 'barnLabel', 'btnShop',
+      'btnHaptics', 'btnPauseShop', 'btnPauseFarmer',
     ].forEach((id) => { E[id] = el(id); });
 
     const G = () => NIAH.game;
@@ -63,6 +66,16 @@ NIAH.ui = (function () {
     el('closeRetire').addEventListener('click', () => screen('retire', false));
     el('btnDoRetire').addEventListener('click', () => G().retire());
     el('btnCollectOffline').addEventListener('click', () => G().claimOffline());
+
+    el('btnMenuDaily').addEventListener('click', () => showDaily());
+    el('btnDailyClose').addEventListener('click', () => closeDaily());
+    E.btnDailyGo.addEventListener('click', () => {
+      NIAH.audio.wake();
+      if (dailyDone) { closeDaily(); return; }      // the card is a result, not an invitation
+      screen('dailyCard', false);
+      G().startDaily();
+    });
+    E.btnHaptics.addEventListener('click', () => G().toggleHaptics());
 
     el('btnSkipIntro').addEventListener('click', () => G().skipIntro());
     el('btnShop').addEventListener('click', () => openShop());
@@ -176,6 +189,7 @@ NIAH.ui = (function () {
     E.menuSound.textContent = NIAH.audio.muted ? '🔇 Sound off' : '🔊 Sound on';
     E.btnSound.textContent = 'Sound: ' + (NIAH.audio.muted ? 'Off' : 'On');
     syncPrestige();
+    if (NIAH.game && NIAH.game.dailyInfo) setDailyNote(NIAH.game.dailyInfo());
   }
 
   /* The rosette line and the three Retire buttons all say the same thing, so
@@ -189,7 +203,7 @@ NIAH.ui = (function () {
       E.prestigeLine.textContent = '🏅 ' + r + ' rosette' + (r === 1 ? '' : 's')
         + ' · ×' + G.prestigeMult().toFixed(1) + ' coins · ×' + G.prestigeGrunt().toFixed(2) + ' digging';
     }
-    const show = G.canRetire();
+    const show = G.canRetire() && !G.dailyActive();
     E.btnMenuRetire.hidden = !show;
     E.btnPauseRetire.hidden = !show;
     E.btnWinRetire.hidden = !show;
@@ -242,6 +256,93 @@ NIAH.ui = (function () {
       : 'Fill every slot and the Tin Can Hat is yours, plus a one-off bounty.';
     screen('shelf', true);
     NIAH.audio.ui();
+  }
+
+  /* ---------------------------------------------------- daily barn */
+
+  let dailyDone = false;     // is the card showing a result, or the invitation?
+
+  function clock(ms) {
+    const s = ms / 1000;
+    if (s < 60) return s.toFixed(1) + 's';
+    return Math.floor(s / 60) + 'm ' + (s % 60).toFixed(1).padStart(4, '0') + 's';
+  }
+
+  /* The clock is the only number that matters in a daily, so it takes the
+     coin counter's place rather than crowding in beside it. */
+  function setDailyMode(on) {
+    E.dailyTimer.hidden = !on;
+    E.coinBox.hidden = !!on;
+    E.btnShop.hidden = !!on;
+    E.barnLabel.textContent = on ? 'Daily' : 'Barn';
+    E.hudLevel.hidden = !!on;
+    // nothing bought during a daily would survive it, so the shops are shut
+    E.btnPauseShop.hidden = !!on;
+    E.btnPauseFarmer.hidden = !!on;
+    setDailyTimer(0);
+  }
+
+  function setDailyTimer(ms) {
+    E.dailyClock.textContent = clock(ms);
+  }
+
+  function setDailyNote(info) {
+    if (!E.dailyNote) return;
+    E.dailyNote.textContent = info.doneToday
+      ? 'done · ' + clock(info.bestMs)
+      : info.bestMs ? 'best ' + clock(info.bestMs) : 'new today';
+  }
+
+  function showDaily() {
+    const info = NIAH.game.dailyInfo();
+    dailyDone = false;
+    E.dailyArt.textContent = '🗓️';
+    E.dailyHead.textContent = 'Daily Barn';
+    E.dailyText.textContent = 'The same barn for everyone today: ' + info.piles + ' piles, one needle, '
+      + 'a ' + info.shovel + ' and a Lv 2 detector. No coins in here and nothing to buy — '
+      + 'just the clock. It changes at midnight.';
+    E.dailyStats.innerHTML = [
+      ['Today', info.day],
+      ["Today's best", info.bestMs ? clock(info.bestMs) : '—'],
+      ['Run', info.streak + (info.streak === 1 ? ' day' : ' days')],
+      ['Longest run', (info.bestStreak || 0) + (info.bestStreak === 1 ? ' day' : ' days')],
+      ['Barns found', info.wins || 0],
+    ].map((r) => '<div><span>' + r[0] + '</span><span>' + r[1] + '</span></div>').join('');
+    E.btnDailyGo.textContent = info.doneToday ? 'Beat your time' : 'Start the clock';
+    screen('dailyCard', true);
+    NIAH.audio.ui();
+  }
+
+  function showDailyResult(r, info) {
+    dailyDone = true;
+    E.dailyArt.textContent = r.improved ? '🏆' : '🪡';
+    E.dailyHead.textContent = r.improved ? 'New best!' : 'Found it';
+    E.dailyText.textContent = r.first
+      ? 'Today\u2019s barn is done in ' + clock(r.ms) + '.'
+      : 'Another run: ' + clock(r.ms) + (r.improved ? ' — quicker than before.' : ', not your best.');
+    const rows = [
+      ['This run', clock(r.ms)],
+      ["Today's best", clock(r.best)],
+      ['Run', r.streak + (r.streak === 1 ? ' day' : ' days')],
+      ['Longest run', (r.bestStreak || 0) + (r.bestStreak === 1 ? ' day' : ' days')],
+    ];
+    if (r.bounty) rows.push(['Daily bounty', '🪙 ' + fmt(r.bounty)]);
+    E.dailyStats.innerHTML = rows.map((x) => '<div><span>' + x[0] + '</span><span>' + x[1] + '</span></div>').join('');
+    E.btnDailyGo.textContent = 'Back to the farm';
+    screen('dailyCard', true);
+  }
+
+  /* The invitation opens on top of the menu, which is still there underneath;
+     the result card ends a run, so that one goes back through quitToMenu. */
+  function closeDaily() {
+    screen('dailyCard', false);
+    if (NIAH.game.dailyActive()) NIAH.game.quitToMenu();
+  }
+
+  function setHapticsLabel(on) {
+    if (!E.btnHaptics) return;
+    E.btnHaptics.hidden = !NIAH.haptics.supported;
+    E.btnHaptics.textContent = 'Vibration: ' + (on ? 'On' : 'Off');
   }
 
   /* --------------------------------------------------------- retire */
@@ -515,6 +616,7 @@ NIAH.ui = (function () {
     init, screen, hudOn, setHud, setPileCard, setPrompt, setAction, setSense, setIntro,
     setMenu, setCameraLabel, renderShop, openShop, closeShop, shopIsOpen, showStats, showWin, toast,
     renderWardrobe, syncOutfitCat, syncPrestige, setOffline, clearOffline, showRetire, showShelf,
+    setDailyMode, setDailyTimer, setDailyNote, showDaily, showDailyResult, setHapticsLabel,
     bumpCoins, fmt,
     get stick() { return E.stick; },
     get stickKnob() { return E.stickKnob; },

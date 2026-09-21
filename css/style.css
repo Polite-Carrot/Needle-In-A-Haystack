@@ -59,7 +59,7 @@ html, body {
 
 /* Barn Shelf and Retire open on top of whatever asked for them — the pause
    card, the win card or the menu — so they sit a layer above the rest. */
-#shelf, #retire { z-index: 26; }
+#shelf, #retire, #dailyCard { z-index: 26; }
 
 .card {
   width: 100%; max-width: 380px;
@@ -605,6 +605,24 @@ kbd {
 .shelf-name { font-size: 14px; font-weight: 800; }
 .shelf-line { font-size: 11.5px; font-weight: 600; opacity: .72; line-height: 1.4; }
 .shelf-count { font-size: 15px; font-weight: 900; color: var(--gold); flex: none; }
+
+/* ---------------------------------------------------- daily barn */
+
+/* The menu button carries today's state, so you can see whether it is worth
+   opening without opening it. */
+.btn-note {
+  display: block;
+  font-size: 11px; font-weight: 700; letter-spacing: .3px;
+  opacity: .6; margin-top: 3px; text-transform: none;
+}
+
+/* The clock stands in for the coin counter, so it wants the same weight and
+   a fixed width — digits must not shuffle the chip about as they tick. */
+.coins.timer {
+  font-variant-numeric: tabular-nums;
+  min-width: 96px;
+  color: var(--gold);
+}
 
 .win-stats { background: rgba(0,0,0,.28); border-radius: 14px; padding: 10px 14px; font-size: 13px; text-align: left; }
 .win-stats div { display: flex; justify-content: space-between; padding: 4px 0; }

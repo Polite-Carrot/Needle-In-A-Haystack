@@ -46,6 +46,7 @@
         <button class="btn big" id="btnContinue" hidden>Continue — <span id="continueLabel"></span></button>
         <button class="btn big" id="btnPlay">Start digging</button>
         <button class="btn ghost" id="btnFarmerMenu">👕 My Farmer</button>
+        <button class="btn ghost" id="btnMenuDaily">🗓️ Daily Barn<span class="btn-note" id="dailyNote"></span></button>
         <button class="btn ghost" id="btnMenuShelf">🗄️ Barn Shelf</button>
         <button class="btn ghost" id="btnMenuRetire" hidden>🏅 Retire the farm</button>
         <button class="btn ghost" id="btnHowTo">How to play</button>
@@ -70,7 +71,8 @@
   <div id="hud" aria-hidden="true">
     <div class="hud-top">
       <div class="coins" id="coinBox"><span class="coin-icon">🪙</span><span id="coinCount">0</span></div>
-      <div class="barn-chip">Barn <span id="hudLevel">1</span></div>
+      <div class="coins timer" id="dailyTimer" hidden>⏱ <span id="dailyClock">0.0</span></div>
+      <div class="barn-chip" id="barnChip"><span id="barnLabel">Barn</span> <span id="hudLevel">1</span></div>
       <div class="hud-top-right">
         <button class="icon-btn" id="btnShop" title="Shop">🛒<span id="shopDot" class="dot" hidden></span></button>
         <button class="icon-btn" id="btnPause" title="Pause">⏸</button>
@@ -123,6 +125,7 @@
       <button class="btn ghost" id="btnPauseRetire" hidden>🏅 Retire the farm</button>
       <button class="btn ghost" id="btnCamera">Camera: Follow</button>
       <button class="btn ghost" id="btnSound">Sound: On</button>
+      <button class="btn ghost" id="btnHaptics" hidden>Vibration: On</button>
       <button class="btn ghost" id="btnQuit">Quit to menu</button>
     </div>
   </section>
@@ -138,6 +141,7 @@
         <li><b>The needle</b> is buried at some depth in <b>one</b> pile. Dig that pile down far enough and you will see it glinting in what is left — then walk over and grab it.</li>
         <li>Digging the wrong pile is never wasted — it still pays. <b>Needle Sense</b> tells you how far off the needle is from where you stand, so take a reading, walk somewhere else, take another, and close in.</li>
         <li>Spend coins on shovels and gear. Better shovels unlock as you clear barns.</li>
+        <li>The <b>Daily Barn</b> is the same barn for everybody, every day: fixed kit, no coins, no shop — just the clock. Come back tomorrow for a new one and keep your run going.</li>
         <li><b>Odds and ends</b> come out of the hay too. Every kind you dig up goes on the <b>Barn Shelf</b> — fill it and there is a bounty and a hat in it.</li>
         <li>From <b>barn 8</b> you can <b>retire the farm</b>: you hand back the coins, the shovels and the gear and start at barn 1 again, but you keep a <b>rosette</b> for every needle you found. Each one is +10% coins and +5% digging for good, and every eight of them lets you buy the shovels a barn earlier. Your farmer and your Barn Shelf come with you.</li>
       </ul>
@@ -197,6 +201,18 @@
     </div>
   </section>
 
+  <!-- -------------------------------------------------- daily barn -->
+  <section id="dailyCard" class="screen dim" aria-hidden="true">
+    <div class="card">
+      <div class="needle-art" id="dailyArt">🗓️</div>
+      <h2 id="dailyHead">Daily Barn</h2>
+      <p id="dailyText"></p>
+      <div class="win-stats" id="dailyStats"></div>
+      <button class="btn big" id="btnDailyGo">Start the clock</button>
+      <button class="btn ghost" id="btnDailyClose">Back</button>
+    </div>
+  </section>
+
   <!-- ------------------------------------------------ level complete -->
   <section id="win" class="screen dim" aria-hidden="true">
     <div class="card">
@@ -249,6 +265,7 @@ if ('serviceWorker' in navigator && location.protocol.indexOf('http') === 0) {
 </script>
 <script src="vendor/three.min.js"></script>
 <script src="js/audio.js"></script>
+<script src="js/haptics.js"></script>
 <script src="js/world.js"></script>
 <script src="js/cosmetics.js"></script>
 <script src="js/player.js"></script>

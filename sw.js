@@ -1,7 +1,7 @@
 /* Needle in a Haystack — offline shell.
    Everything the game needs is static and small, so the whole thing is
    precached on install. Bump CACHE when the shell changes. */
-const CACHE = 'niah-shell-v1';
+const CACHE = 'niah-shell-v2';
 
 const SHELL = [
   './',
@@ -10,6 +10,7 @@ const SHELL = [
   './css/style.css',
   './vendor/three.min.js',
   './js/audio.js',
+  './js/haptics.js',
   './js/world.js',
   './js/cosmetics.js',
   './js/player.js',
