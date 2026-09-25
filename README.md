@@ -33,6 +33,10 @@ network calls, no dependencies to install.
 - **A barn you walk around** — procedural low-poly barn interior and exterior,
   lanterns, dust in the light shafts, a farmhand with a hand-animated walk,
   dig and dump cycle, and a conveyor sifter running in the corner.
+- **A yard with livestock.** Walk back out of the doors and there is a fenced
+  paddock in front of the barn with two cows, two sheep, a pig and three
+  chickens wandering it, grazing, and trotting out of your way when you get
+  close. Nothing to do out there — it is somewhere to be.
 - **A walk-in cutscene** for every barn: the doors swing open, the camera
   follows you inside, and the barn number lands on screen. Skippable.
 - **Spatial search, not tapping.** Each barn has labelled piles (A, B, C…) and
@@ -102,6 +106,9 @@ network calls, no dependencies to install.
   a setting that does nothing.
 - **Installable.** A web app manifest, icons and a service worker that precaches
   the whole game, so it can be added to a home screen and played with no signal.
+- **First person or follow camera**, toggled from the pause menu. In first
+  person the body is hidden and the camera sits at eye height — the arms and
+  the shovel stay, so you can still see what you are carrying.
 - Main menu, pause menu, first-person / follow camera toggle, synthesised sound
   effects (no audio files), and autosave to `localStorage`.
 - The shared **Polite Carrot boot lockup** on startup, ported from Color Match &
@@ -163,6 +170,7 @@ the service worker the whole origin as its scope.
 | `js/cosmetics.js` | Outfits, hats, faces, shovel skins and their procedural textures |
 | `js/wardrobe.js` | The My Farmer preview scene and its auto-framing |
 | `js/helpers.js` | Hired farmhands: their round trip, steering and animation |
+| `js/animals.js` | The yard livestock: how they are built and how they wander |
 | `js/audio.js` | WebAudio sound effects |
 | `js/haptics.js` | Vibration patterns, and the feature test that hides them on iOS |
 | `sw.js` | Service worker: precaches the shell so the game runs offline |

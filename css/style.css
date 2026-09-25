@@ -57,6 +57,10 @@ html, body {
 .screen.clear { background: none; }
 .screen[hidden] { display: none; }
 
+/* A class that sets `display` beats the user-agent's [hidden] rule, which is
+   how the Daily Barn clock ended up showing in every ordinary barn. */
+[hidden] { display: none !important; }
+
 /* Barn Shelf and Retire open on top of whatever asked for them — the pause
    card, the win card or the menu — so they sit a layer above the rest. */
 #shelf, #retire, #dailyCard { z-index: 26; }

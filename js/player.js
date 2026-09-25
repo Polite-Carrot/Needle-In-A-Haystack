@@ -23,7 +23,7 @@ NIAH.player = (function () {
   const vel = new T.Vector3();
   let yaw = Math.PI;               // facing -Z is "into the barn"
   let walkPhase = 0, digPhase = 0, action = 'idle', speedNow = 0;
-  let camYaw = Math.PI, camDistance = 12.5, stepFlag = false;
+  let camYaw = Math.PI, camDistance = 12.5, stepFlag = false, firstPerson = false;
   const tmp = new T.Vector3();
 
   /* ----------------------------------------------------------- build */
@@ -43,11 +43,13 @@ NIAH.player = (function () {
     torso.position.y = 0.48;
     hips.add(torso);
     p.trouserMeshes.push(torso);
+    p.torso = torso;
 
     const chest = new T.Mesh(new T.BoxGeometry(0.84, 0.42, 0.5), MAT.shirt);
     chest.position.y = 0.82;
     hips.add(chest);
     p.shirtMeshes.push(chest);
+    p.chest = chest;
 
     const head = new T.Mesh(new T.SphereGeometry(0.3, 12, 10), MAT.skin);
     head.position.y = 1.28;
@@ -124,7 +126,7 @@ NIAH.player = (function () {
 
   /* -------------------------------------------------------- movement */
 
-  function collide(world) {
+  function collide(world, prevZ) {
     const b = world.bounds;
     if (!b) return;
 
@@ -150,12 +152,23 @@ NIAH.player = (function () {
       }
     }
 
-    // walls, with a gap where the doors are
-    pos.x = Math.max(b.minX, Math.min(b.maxX, pos.x));
-    pos.z = Math.max(b.minZ, pos.z);
-    if (pos.z > b.innerMaxZ) {
-      if (Math.abs(pos.x) > b.doorHalf) pos.z = b.innerMaxZ;
-      else pos.z = Math.min(b.maxZ, pos.z);
+    /* The front wall is a slab with the doorway as its only hole. Push back to
+       the face you came in from: clamping to a single plane meant that walking
+       sideways out in the yard flung you back inside the barn. */
+    if (pos.z > b.innerMaxZ && pos.z < b.wallMaxZ) {
+      if (Math.abs(pos.x) > b.doorHalf) {
+        pos.z = prevZ <= b.innerMaxZ ? b.innerMaxZ : b.wallMaxZ;
+      } else {
+        pos.x = Math.max(-b.doorHalf, Math.min(b.doorHalf, pos.x));
+      }
+    }
+
+    if (pos.z >= b.wallMaxZ) {                  // out in the yard
+      pos.x = Math.max(b.yardMinX, Math.min(b.yardMaxX, pos.x));
+      pos.z = Math.min(pos.z, b.maxZ);
+    } else {                                    // inside the barn
+      pos.x = Math.max(b.minX, Math.min(b.maxX, pos.x));
+      pos.z = Math.max(b.minZ, pos.z);
     }
   }
 
@@ -184,9 +197,10 @@ NIAH.player = (function () {
       vel.z -= vel.z * Math.min(1, dt * 14);
     }
 
+    const prevZ = pos.z;
     pos.x += vel.x * dt;
     pos.z += vel.z * dt;
-    collide(world);
+    collide(world, prevZ);
 
     speedNow = Math.hypot(vel.x, vel.z);
     group.position.copy(pos);
@@ -257,12 +271,26 @@ NIAH.player = (function () {
 
   /* ---------------------------------------------------------- camera */
 
+  /* In first person the camera sits where the head is, so the body has to go —
+     it used to fill the bottom half of the screen with the farmer's own
+     trousers. The arms and the shovel stay: they read as your own hands. */
+  function setFirstPerson(on) {
+    if (firstPerson === !!on) return;
+    firstPerson = !!on;
+    [parts.torso, parts.chest, parts.head, parts.hatAnchor,
+     parts.legL, parts.legR, parts.shadow].forEach((m) => {
+      if (m) m.visible = !firstPerson;
+    });
+  }
+
   function updateCamera(camera, dt, mode, instant, bounds) {
+    setFirstPerson(mode === 'first');
     if (mode === 'first') {
-      camera.position.set(pos.x, 1.95, pos.z);
-      camera.position.x -= Math.sin(group.rotation.y) * 0.1;
-      camera.position.z -= Math.cos(group.rotation.y) * 0.1;
-      tmp.set(pos.x + Math.sin(group.rotation.y) * 6, 1.6, pos.z + Math.cos(group.rotation.y) * 6);
+      const s = Math.sin(group.rotation.y), c = Math.cos(group.rotation.y);
+      // eye height, a little ahead of where the head was
+      const bob = speedNow > 0.4 ? Math.sin(walkPhase * 2) * 0.035 : 0;
+      camera.position.set(pos.x + s * 0.2, 2.16 + bob, pos.z + c * 0.2);
+      tmp.set(pos.x + s * 9, 2.02, pos.z + c * 9);
       camera.lookAt(tmp);
       camYaw = group.rotation.y;
       return;
@@ -352,7 +380,7 @@ NIAH.player = (function () {
 
   return {
     create, buildRig, place, update, updateCamera, nudgeCamera, setAction, setLoadVisual, applyLook,
-    holdNeedle, faceTowards,
+    holdNeedle, faceTowards, setFirstPerson,
     get position() { return pos; },
     get yaw() { return yaw; },
     get speed() { return speedNow; },

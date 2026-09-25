@@ -19,6 +19,8 @@ NIAH.world = (function () {
     beltBed:  new T.MeshLambertMaterial({ color: 0x2f2a24 }),
     beltSlat: new T.MeshLambertMaterial({ color: 0x4a423a }),
     grass:    new T.MeshLambertMaterial({ color: 0x5f8a3f }),
+    fence:    new T.MeshLambertMaterial({ color: 0x7d6142, flatShading: true }),
+    gate:     new T.MeshLambertMaterial({ color: 0x9a7b55, flatShading: true }),
     trunk:    new T.MeshLambertMaterial({ color: 0x4a3119 }),
     leaf:     new T.MeshLambertMaterial({ color: 0x3f6b31, flatShading: true }),
     shadow:   new T.MeshBasicMaterial({ color: 0x1a1006, transparent: true, opacity: 0.3, depthWrite: false }),
@@ -347,16 +349,76 @@ NIAH.world = (function () {
       state.piles.push(buildPile(g, pos.x, pos.z, i, p));
     });
 
+    /* Two rooms, not one: the barn, and the fenced yard in front of it. The
+       front wall between them is a slab with the doorway as its only hole. */
     state.bounds = {
       minX: -halfW + 1.6, maxX: halfW - 1.6,
-      minZ: -halfD + 1.6, maxZ: halfD + 14,     // beyond the doors is the outside
-      innerMaxZ: halfD - 1.6, doorHalf: doorW / 2 - 0.6,
+      minZ: -halfD + 1.6,
+      innerMaxZ: halfD - 1.6,                   // inner face of the front wall
+      wallMaxZ: halfD + 1.6,                    // and its outer face
+      doorHalf: doorW / 2 - 0.6,
+      yardMinX: -halfW - 12, yardMaxX: halfW + 12,
+      maxZ: halfD + 30,                         // the far fence
     };
     state.doorOpen = 0;
+
+    buildYard(g, state.bounds);
+    NIAH.animals.build(g, state.bounds);
 
     levelGroup = g;
     scene.add(g);
     return { layout: L, bounds: state.bounds };
+  }
+
+  /* The paddock in front of the doors: post-and-rail on three sides, with a
+     shut five-bar gate where the track carries on to the rest of the farm. */
+  function buildYard(g, b) {
+    /* Thirty-odd identical posts would be thirty-odd draw calls, so they go in
+       one instanced mesh; the rails and the gate are few enough to be plain. */
+    const spots = [];
+    const post = (x, z) => spots.push([x, z]);
+    const rail = (x, z, len, alongX) => {
+      [0.6, 1.1].forEach((y) => {
+        const m = new T.Mesh(alongX ? new T.BoxGeometry(len, 0.14, 0.1)
+                                    : new T.BoxGeometry(0.1, 0.14, len), MAT.fence);
+        m.position.set(x, y, z);
+        g.add(m);
+      });
+    };
+
+    const gateHalf = 5;
+    for (const sx of [-1, 1]) {
+      const x = sx > 0 ? b.yardMaxX : b.yardMinX;
+      for (let z = b.wallMaxZ; z <= b.maxZ + 0.01; z += 4) post(x, z);
+      rail(x, (b.wallMaxZ + b.maxZ) / 2, b.maxZ - b.wallMaxZ, false);
+    }
+    // far side, in two runs with the gateway between them
+    for (const sx of [-1, 1]) {
+      const from = sx > 0 ? gateHalf : b.yardMinX;
+      const to = sx > 0 ? b.yardMaxX : -gateHalf;
+      for (let x = from; x <= to + 0.01; x += 4) post(x, b.maxZ);
+      post(to, b.maxZ);
+      rail((from + to) / 2, b.maxZ, to - from, true);
+    }
+    // the gate itself, five bars and shut
+    for (let i = 0; i < 5; i++) {
+      const bar = new T.Mesh(new T.BoxGeometry(gateHalf * 2 - 0.3, 0.12, 0.08), MAT.gate);
+      bar.position.set(0, 0.35 + i * 0.28, b.maxZ);
+      g.add(bar);
+    }
+    const brace = new T.Mesh(new T.BoxGeometry(0.12, 1.55, 0.08), MAT.gate);
+    brace.position.set(0, 0.78, b.maxZ);
+    brace.rotation.z = 0.62;
+    g.add(brace);
+
+    const posts = new T.InstancedMesh(new T.BoxGeometry(0.22, 1.5, 0.22), MAT.fence, spots.length);
+    const m4 = new T.Matrix4();
+    spots.forEach(([x, z], i) => posts.setMatrixAt(i, m4.makeTranslation(x, 0.75, z)));
+    posts.instanceMatrix.needsUpdate = true;
+    // without this the bounds come from the single base box at the origin, and
+    // the whole fence winks out whenever the barn centre leaves the view
+    posts.computeBoundingSphere();
+    g.add(posts);
   }
 
   /* The sifter: a conveyor tucked along the wall by the doors. You tip a load
@@ -816,6 +878,7 @@ NIAH.world = (function () {
   }
 
   function update(dt, time) {
+    NIAH.animals.update(dt, state.bounds);
     // doors
     for (const d of state.doors) {
       d.pivot.rotation.y = -d.sign * state.doorOpen * 1.9;

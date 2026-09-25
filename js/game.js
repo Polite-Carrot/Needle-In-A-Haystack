@@ -299,6 +299,7 @@ NIAH.game = (function () {
 
   function startLevel(withIntro) {
     buildWorldForLevel();
+    NIAH.player.setFirstPerson(false);      // the walk-in is always third person
     const L = NIAH.world.layout;
     NIAH.ui.setIntro(state.lv.level, state.lv.piles.length + ' piles · one needle');
     if (withIntro) {
@@ -928,6 +929,7 @@ NIAH.game = (function () {
     NIAH.player.faceTowards(p.x + ax, p.z + az);
     if (pos) NIAH.world.hayBurst(pos.x, pos.y + 1, pos.z, 20);
     NIAH.world.hideNeedle();
+    NIAH.player.setFirstPerson(false);      // you are about to be on camera
     NIAH.player.setAction('hold');
     NIAH.player.holdNeedle(true);
     NIAH.ui.hudOn(false);
