@@ -828,6 +828,56 @@ NIAH.cosmetics = (function () {
         }
         return g;
       } },
+    { id: 'scarecrow', name: 'Scarecrow Head', price: 0, need: 'stash', swatch: ['#c9a96a', '#5a4326'],
+      desc: 'Found in a crate behind barn 4. It has been watching the field for years.',
+      build: () => {
+        const g = new T.Group();
+        g.position.y = -0.06;
+        g.rotation.z = 0.05;
+        const sack = M(0xc9a96a, true);
+
+        /* A stuffed sack pulled right down over the head and tied at the neck.
+           It has to swallow a 0.3 sphere centred at world 2.23, or the
+           farmer's own chin shows underneath. */
+        const head = new T.Mesh(new T.SphereGeometry(0.4, 10, 8), sack);
+        head.scale.set(1, 1.12, 0.96);
+        head.position.y = 0.02;
+        const tie = new T.Mesh(new T.CylinderGeometry(0.26, 0.34, 0.16, 10), M(0x8d6f3d, true));
+        tie.position.y = -0.36;
+        const gather = new T.Mesh(new T.SphereGeometry(0.13, 8, 6), sack);
+        gather.position.y = 0.5;
+        gather.scale.y = 1.4;
+        g.add(head, tie, gather);
+
+        // straw poking out of the seams
+        for (let i = 0; i < 9; i++) {
+          const a = (i / 9) * Math.PI * 2;
+          const straw = new T.Mesh(new T.CylinderGeometry(0.018, 0.012, 0.3, 4), M(0xe0b657, true));
+          straw.position.set(Math.cos(a) * 0.3, -0.4, Math.sin(a) * 0.26);
+          straw.rotation.set(Math.cos(a) * 0.7, 0, Math.sin(a) * 0.7 - 0.3);
+          g.add(straw);
+        }
+
+        // stitched cross eyes and a sewn-up mouth
+        const thread = M(0x4a3218);
+        for (const sx of [-1, 1]) {
+          for (const r of [0.7, -0.7]) {
+            const st = new T.Mesh(new T.BoxGeometry(0.16, 0.04, 0.03), thread);
+            st.position.set(sx * 0.15, 0.1, 0.37);
+            st.rotation.z = r;
+            g.add(st);
+          }
+        }
+        for (let i = 0; i < 5; i++) {
+          const st = new T.Mesh(new T.BoxGeometry(0.03, 0.1, 0.03), thread);
+          st.position.set(-0.13 + i * 0.065, -0.12, 0.36);
+          g.add(st);
+        }
+        const seam = new T.Mesh(new T.BoxGeometry(0.36, 0.028, 0.03), thread);
+        seam.position.set(0, -0.12, 0.36);
+        g.add(seam);
+        return g;
+      } },
     { id: 'tincan', name: 'Tin Can Hat', price: 0, need: 'shelf', swatch: ['#b9c2c9', '#c0392b'],
       desc: 'The first thing you ever dug out, worn with pride.',
       build: () => {
@@ -1320,6 +1370,93 @@ NIAH.cosmetics = (function () {
         blade.scale.set(0.8, 1.1, 0.5);
         const load = hayLoad(-2.1, 0.5);
         g.add(handle, blade, load);
+        return { group: g, blade, load };
+      } },
+    { id: 'lantern', name: 'Lantern Spade', price: 0, need: 'stash', swatch: ['#3f3a33', '#ffd98a'],
+      desc: 'Found behind barn 8. Somebody used to dig by its light.',
+      build: () => {
+        const g = new T.Group();
+        const iron = M(0x3f3a33);
+        const handle = new T.Mesh(new T.CylinderGeometry(0.06, 0.06, 1.9, 6), M(0x5a4a35));
+        handle.position.y = -0.95;
+        const blade = new T.Mesh(new T.BoxGeometry(0.6, 0.7, 0.09), iron);
+        blade.position.y = -1.95;
+        const edge = new T.Mesh(new T.BoxGeometry(0.6, 0.09, 0.12), M(0xb9c2c9, true));
+        edge.position.y = -2.3;
+        g.add(handle, blade, edge);
+
+        /* The lantern, hung off a bracket. It has to be big enough and bright
+           enough to read as a lantern at arm's length, not a lump on the
+           shaft — so brass, a glass belly and a flame that lights the blade. */
+        const brass = M(0xc9a244, true);
+        const bracket = new T.Mesh(new T.BoxGeometry(0.4, 0.06, 0.06), iron);
+        bracket.position.set(0.2, -0.5, 0);
+        const hook = new T.Mesh(new T.TorusGeometry(0.06, 0.018, 5, 9), brass);
+        hook.position.set(0.4, -0.56, 0);
+        const glass = new T.Mesh(new T.CylinderGeometry(0.17, 0.19, 0.34, 8),
+          new T.MeshLambertMaterial({ color: 0xffe2a8, emissive: 0xffa82e, transparent: true, opacity: 0.9 }));
+        glass.position.set(0.4, -0.84, 0);
+        const cap = new T.Mesh(new T.ConeGeometry(0.23, 0.16, 8), brass);
+        cap.position.set(0.4, -0.63, 0);
+        const base = new T.Mesh(new T.CylinderGeometry(0.21, 0.21, 0.07, 8), brass);
+        base.position.set(0.4, -1.04, 0);
+        for (let i = 0; i < 4; i++) {           // cage bars down the glass
+          const a = (i / 4) * Math.PI * 2;
+          const bar = new T.Mesh(new T.BoxGeometry(0.03, 0.36, 0.03), iron);
+          bar.position.set(0.4 + Math.cos(a) * 0.18, -0.84, Math.sin(a) * 0.18);
+          g.add(bar);
+        }
+        const flame = new T.Mesh(new T.SphereGeometry(0.09, 8, 6),
+          new T.MeshLambertMaterial({ color: 0xfff0c4, emissive: 0xffc255 }));
+        flame.position.set(0.4, -0.86, 0);
+        const light = new T.PointLight(0xffc477, 9, 8, 2);
+        light.position.set(0.4, -0.86, 0);
+        g.add(bracket, hook, glass, cap, base, flame, light);
+
+        const load = hayLoad(-2.06);
+        g.add(load);
+        return { group: g, blade, load };
+      } },
+    { id: 'diamondx', name: 'Diamond Excavator', price: 0, need: 'stash', swatch: ['#9ef0ff', '#ffd76b'],
+      desc: 'Found behind barn 12. Nobody leaves this in a crate by accident.',
+      build: () => {
+        const g = new T.Group();
+        const chrome = new T.MeshLambertMaterial({ color: 0xdfe7ec, flatShading: true });
+        const gold = M(0xffcf4d, true);
+        const handle = new T.Mesh(new T.CylinderGeometry(0.065, 0.055, 1.9, 8), chrome);
+        handle.position.y = -0.95;
+        g.add(handle);
+        [-0.35, -1.0, -1.62].forEach((y) => {
+          const collar = new T.Mesh(new T.TorusGeometry(0.082, 0.026, 6, 14), gold);
+          collar.position.y = y;
+          collar.rotation.x = Math.PI / 2;
+          g.add(collar);
+        });
+        const grip = new T.Mesh(new T.TorusGeometry(0.15, 0.05, 6, 14), gold);
+        grip.position.y = 0.04;
+        g.add(grip);
+
+        // a faceted gem where the blade should be
+        const gem = new T.MeshLambertMaterial({
+          color: 0x9ef0ff, flatShading: true, transparent: true, opacity: 0.92, emissive: 0x1d5f74,
+        });
+        const blade = new T.Mesh(new T.OctahedronGeometry(0.52, 0), gem);
+        blade.position.y = -2.02;
+        blade.scale.set(0.92, 1.25, 0.55);
+        const crown = new T.Mesh(new T.ConeGeometry(0.4, 0.3, 6), gem);
+        crown.position.y = -1.64;
+        const shard = new T.Mesh(new T.OctahedronGeometry(0.16, 0), gem);
+        shard.position.set(0.3, -2.3, 0);
+        shard.rotation.z = 0.7;
+        const shard2 = new T.Mesh(new T.OctahedronGeometry(0.14, 0), gem);
+        shard2.position.set(-0.29, -2.26, 0);
+        shard2.rotation.z = -0.6;
+        const glint = new T.PointLight(0xbdf3ff, 4, 5, 2);
+        glint.position.y = -2.0;
+        g.add(blade, crown, shard, shard2, glint);
+
+        const load = hayLoad(-2.1, 0.5);
+        g.add(load);
         return { group: g, blade, load };
       } },
     { id: 'heirloom', name: 'Heirloom Spade', price: 0, need: 3, swatch: ['#8a6a3a', '#d8a944'],

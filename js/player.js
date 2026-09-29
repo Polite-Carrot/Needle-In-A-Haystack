@@ -126,7 +126,7 @@ NIAH.player = (function () {
 
   /* -------------------------------------------------------- movement */
 
-  function collide(world, prevZ) {
+  function collide(world, prevX, prevZ) {
     const b = world.bounds;
     if (!b) return;
 
@@ -152,24 +152,42 @@ NIAH.player = (function () {
       }
     }
 
-    /* The front wall is a slab with the doorway as its only hole. Push back to
-       the face you came in from: clamping to a single plane meant that walking
-       sideways out in the yard flung you back inside the barn. */
-    if (pos.z > b.innerMaxZ && pos.z < b.wallMaxZ) {
-      if (Math.abs(pos.x) > b.doorHalf) {
-        pos.z = prevZ <= b.innerMaxZ ? b.innerMaxZ : b.wallMaxZ;
-      } else {
-        pos.x = Math.max(-b.doorHalf, Math.min(b.doorHalf, pos.x));
+    /* The barn's walls are a solid ring — the footprint minus the floor — and
+       the doorway is the only way through it. Resolving against the side you
+       came from is what stops you being flung across the wall. */
+    const inDoorway = Math.abs(pos.x) < b.doorHalf
+      && pos.z > b.innerMaxZ && pos.z < b.wallMaxZ;
+    const inShell = pos.x > b.shellMinX && pos.x < b.shellMaxX
+      && pos.z > b.shellMinZ && pos.z < b.shellMaxZ;
+    const onFloor = pos.x > b.minX && pos.x < b.maxX
+      && pos.z > b.minZ && pos.z < b.innerMaxZ;
+
+    if (inShell && !onFloor && !inDoorway) {
+      /* Inclusive, and with slack: a step into the wall leaves you clamped
+         exactly on the floor's edge, and a strict test would then call that
+         "not from the floor" next frame and shove you out through the wall. */
+      const e = 0.01;
+      const cameFromFloor = prevX >= b.minX - e && prevX <= b.maxX + e
+        && prevZ >= b.minZ - e && prevZ <= b.innerMaxZ + e;
+      if (cameFromFloor) {                      // keep them on the floor
+        pos.x = Math.max(b.minX, Math.min(b.maxX, pos.x));
+        pos.z = Math.max(b.minZ, Math.min(b.innerMaxZ, pos.z));
+      } else {                                  // shove them back out, nearest face
+        const dL = pos.x - b.shellMinX, dR = b.shellMaxX - pos.x;
+        const dB = pos.z - b.shellMinZ, dF = b.shellMaxZ - pos.z;
+        const m = Math.min(dL, dR, dB, dF);
+        if (m === dL) pos.x = b.shellMinX;
+        else if (m === dR) pos.x = b.shellMaxX;
+        else if (m === dB) pos.z = b.shellMinZ;
+        else pos.z = b.shellMaxZ;
       }
+    } else if (inDoorway) {
+      pos.x = Math.max(-b.doorHalf, Math.min(b.doorHalf, pos.x));
     }
 
-    if (pos.z >= b.wallMaxZ) {                  // out in the yard
-      pos.x = Math.max(b.yardMinX, Math.min(b.yardMaxX, pos.x));
-      pos.z = Math.min(pos.z, b.maxZ);
-    } else {                                    // inside the barn
-      pos.x = Math.max(b.minX, Math.min(b.maxX, pos.x));
-      pos.z = Math.max(b.minZ, pos.z);
-    }
+    // and the fence, which is the edge of the world
+    pos.x = Math.max(b.fieldMinX, Math.min(b.fieldMaxX, pos.x));
+    pos.z = Math.max(b.fieldMinZ, Math.min(b.fieldMaxZ, pos.z));
   }
 
   function update(dt, input, world, opts) {
@@ -197,10 +215,10 @@ NIAH.player = (function () {
       vel.z -= vel.z * Math.min(1, dt * 14);
     }
 
-    const prevZ = pos.z;
+    const prevX = pos.x, prevZ = pos.z;
     pos.x += vel.x * dt;
     pos.z += vel.z * dt;
-    collide(world, prevZ);
+    collide(world, prevX, prevZ);
 
     speedNow = Math.hypot(vel.x, vel.z);
     group.position.copy(pos);
@@ -283,6 +301,24 @@ NIAH.player = (function () {
     });
   }
 
+  /* How far along (dx,dz) from (px,pz) before the ray first enters an
+     axis-aligned box — Infinity if it never does. Slab test, 2D. */
+  function rayIntoBox(px, pz, dx, dz, minX, maxX, minZ, maxZ) {
+    let tmin = -Infinity, tmax = Infinity;
+    if (Math.abs(dx) > 1e-6) {
+      const a = (minX - px) / dx, b = (maxX - px) / dx;
+      tmin = Math.max(tmin, Math.min(a, b));
+      tmax = Math.min(tmax, Math.max(a, b));
+    } else if (px < minX || px > maxX) return Infinity;
+    if (Math.abs(dz) > 1e-6) {
+      const a = (minZ - pz) / dz, b = (maxZ - pz) / dz;
+      tmin = Math.max(tmin, Math.min(a, b));
+      tmax = Math.min(tmax, Math.max(a, b));
+    } else if (pz < minZ || pz > maxZ) return Infinity;
+    if (tmax < Math.max(0, tmin)) return Infinity;
+    return Math.max(0, tmin);
+  }
+
   function updateCamera(camera, dt, mode, instant, bounds) {
     setFirstPerson(mode === 'first');
     if (mode === 'first') {
@@ -304,7 +340,12 @@ NIAH.player = (function () {
     // punch through a wall, and lift it as it shortens so the view stays useful
     const dirX = -Math.sin(camYaw), dirZ = -Math.cos(camYaw);
     let back = camDistance * (camera.aspect < 0.8 ? 1.15 : 1);
-    if (bounds && pos.z < bounds.innerMaxZ - 0.5) {
+    /* Only inside the barn — out in the field there is nothing for the boom to
+       punch through, and beside the barn the interior walls are not even the
+       right walls to be measuring against. */
+    const onFloor = bounds && pos.x > bounds.minX && pos.x < bounds.maxX
+      && pos.z > bounds.minZ && pos.z < bounds.innerMaxZ - 0.5;
+    if (onFloor) {
       const m = 1.8;
       const hitX = dirX > 0.001 ? (bounds.maxX - m - pos.x) / dirX
                  : dirX < -0.001 ? (bounds.minX + m - pos.x) / dirX : Infinity;
@@ -313,6 +354,12 @@ NIAH.player = (function () {
       const hitZ = dirZ > 0.001 ? (zLimit - pos.z) / dirZ
                  : dirZ < -0.001 ? (bounds.minZ + m - pos.z) / dirZ : Infinity;
       back = Math.min(back, Math.max(4.5, Math.min(hitX, hitZ)));
+    } else if (bounds) {
+      // out in the field the barn is still there, just from the other side —
+      // stop the boom backing in through its roof
+      const hit = rayIntoBox(pos.x, pos.z, dirX, dirZ,
+        bounds.shellMinX, bounds.shellMaxX, bounds.shellMinZ, bounds.shellMaxZ);
+      if (hit < Infinity) back = Math.min(back, Math.max(3.4, hit - 0.8));
     }
     const lift = 7.8 + Math.max(0, camDistance - back) * 0.42;
     const want = tmp.set(pos.x + dirX * back, Math.min(10.2, lift), pos.z + dirZ * back);

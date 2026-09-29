@@ -21,6 +21,8 @@ NIAH.world = (function () {
     grass:    new T.MeshLambertMaterial({ color: 0x5f8a3f }),
     fence:    new T.MeshLambertMaterial({ color: 0x7d6142, flatShading: true }),
     gate:     new T.MeshLambertMaterial({ color: 0x9a7b55, flatShading: true }),
+    crate:    new T.MeshLambertMaterial({ color: 0x8a6337, flatShading: true }),
+    crateLid: new T.MeshLambertMaterial({ color: 0xa87f4b, flatShading: true }),
     trunk:    new T.MeshLambertMaterial({ color: 0x4a3119 }),
     leaf:     new T.MeshLambertMaterial({ color: 0x3f6b31, flatShading: true }),
     shadow:   new T.MeshBasicMaterial({ color: 0x1a1006, transparent: true, opacity: 0.3, depthWrite: false }),
@@ -31,7 +33,7 @@ NIAH.world = (function () {
   let renderer, scene, camera, canvas;
   let levelGroup = null, exterior = null, dust = null;
   const disposables = [];
-  const state = { layout: null, piles: [], cart: null, doors: [], doorOpen: 0, bounds: null, needle: null };
+  const state = { layout: null, piles: [], cart: null, doors: [], doorOpen: 0, bounds: null, needle: null, stash: null };
   const bursts = [];
 
   /* ------------------------------------------------------------ setup */
@@ -196,6 +198,7 @@ NIAH.world = (function () {
     state.piles = [];
     state.doors = [];
     state.needle = null;
+    state.stash = null;
   }
 
   function layoutFor(pileCount) {
@@ -231,7 +234,10 @@ NIAH.world = (function () {
     const floor = new T.Mesh(new T.PlaneGeometry(L.width, L.depth), MAT.floor);
     floor.rotation.x = -Math.PI / 2;
     g.add(floor);
-    for (let i = -Math.floor(L.width / 3); i <= Math.floor(L.width / 3); i++) {
+    // plank seams, across the floor only — these used to run out past the
+    // walls and lie on the grass, which nobody saw until you could walk there
+    const seams = Math.floor((halfW - 0.5) / 3);
+    for (let i = -seams; i <= seams; i++) {
       const line = new T.Mesh(new T.BoxGeometry(0.1, 0.02, L.depth), MAT.plank);
       line.position.set(i * 3, 0.012, 0);
       g.add(line);
@@ -349,17 +355,23 @@ NIAH.world = (function () {
       state.piles.push(buildPile(g, pos.x, pos.z, i, p));
     });
 
-    /* Two rooms, not one: the barn, and the fenced yard in front of it. The
-       front wall between them is a slab with the doorway as its only hole. */
+    /* The barn stands in a fenced field, and the fence is the edge of the
+       world. `inner` is the walkable floor; `shell` is the barn's footprint
+       including its walls, solid from the field side except at the doorway;
+       `field` is everything inside the fence. */
     state.bounds = {
-      minX: -halfW + 1.6, maxX: halfW - 1.6,
+      minX: -halfW + 1.6, maxX: halfW - 1.6,    // inner floor
       minZ: -halfD + 1.6,
       innerMaxZ: halfD - 1.6,                   // inner face of the front wall
       wallMaxZ: halfD + 1.6,                    // and its outer face
       doorHalf: doorW / 2 - 0.6,
-      yardMinX: -halfW - 12, yardMaxX: halfW + 12,
-      maxZ: halfD + 30,                         // the far fence
+      shellMinX: -halfW - 1.6, shellMaxX: halfW + 1.6,
+      shellMinZ: -halfD - 1.6, shellMaxZ: halfD + 1.6,
+      fieldMinX: -halfW - 16, fieldMaxX: halfW + 16,
+      fieldMinZ: -halfD - 16,                   // the paddock behind the barn
+      maxZ: halfD + 30,                         // the gate, out front
     };
+    state.bounds.fieldMaxZ = state.bounds.maxZ;
     state.doorOpen = 0;
 
     buildYard(g, state.bounds);
@@ -370,14 +382,15 @@ NIAH.world = (function () {
     return { layout: L, bounds: state.bounds };
   }
 
-  /* The paddock in front of the doors: post-and-rail on three sides, with a
-     shut five-bar gate where the track carries on to the rest of the farm. */
+  /* Post-and-rail right the way round the barn — the fence is the edge of the
+     world — with a shut five-bar gate out front where the track carries on. */
   function buildYard(g, b) {
-    /* Thirty-odd identical posts would be thirty-odd draw calls, so they go in
+    /* Fifty-odd identical posts would be fifty-odd draw calls, so they go in
        one instanced mesh; the rails and the gate are few enough to be plain. */
     const spots = [];
     const post = (x, z) => spots.push([x, z]);
     const rail = (x, z, len, alongX) => {
+      if (len <= 0.1) return;
       [0.6, 1.1].forEach((y) => {
         const m = new T.Mesh(alongX ? new T.BoxGeometry(len, 0.14, 0.1)
                                     : new T.BoxGeometry(0.1, 0.14, len), MAT.fence);
@@ -385,21 +398,24 @@ NIAH.world = (function () {
         g.add(m);
       });
     };
+    const runX = (z, from, to) => {
+      for (let x = from; x <= to + 0.01; x += 4) post(x, z);
+      post(to, z);
+      rail((from + to) / 2, z, to - from, true);
+    };
+    const runZ = (x, from, to) => {
+      for (let z = from; z <= to + 0.01; z += 4) post(x, z);
+      post(x, to);
+      rail(x, (from + to) / 2, to - from, false);
+    };
 
     const gateHalf = 5;
-    for (const sx of [-1, 1]) {
-      const x = sx > 0 ? b.yardMaxX : b.yardMinX;
-      for (let z = b.wallMaxZ; z <= b.maxZ + 0.01; z += 4) post(x, z);
-      rail(x, (b.wallMaxZ + b.maxZ) / 2, b.maxZ - b.wallMaxZ, false);
-    }
-    // far side, in two runs with the gateway between them
-    for (const sx of [-1, 1]) {
-      const from = sx > 0 ? gateHalf : b.yardMinX;
-      const to = sx > 0 ? b.yardMaxX : -gateHalf;
-      for (let x = from; x <= to + 0.01; x += 4) post(x, b.maxZ);
-      post(to, b.maxZ);
-      rail((from + to) / 2, b.maxZ, to - from, true);
-    }
+    runZ(b.fieldMinX, b.fieldMinZ, b.fieldMaxZ);        // left
+    runZ(b.fieldMaxX, b.fieldMinZ, b.fieldMaxZ);        // right
+    runX(b.fieldMinZ, b.fieldMinX, b.fieldMaxX);        // behind the barn
+    // out front, in two runs with the gateway between them
+    runX(b.fieldMaxZ, b.fieldMinX, -gateHalf);
+    runX(b.fieldMaxZ, gateHalf, b.fieldMaxX);
     // the gate itself, five bars and shut
     for (let i = 0; i < 5; i++) {
       const bar = new T.Mesh(new T.BoxGeometry(gateHalf * 2 - 0.3, 0.12, 0.08), MAT.gate);
@@ -857,6 +873,53 @@ NIAH.world = (function () {
     return n ? n.group.position : null;
   }
 
+  /* --------------------------------------------------------- stash */
+
+  /* A crate round the back of the barn. Somebody left it there; the lid is
+     loose. It glints a little so that walking the back fence is rewarded. */
+  function showStash(x, z) {
+    clearStash();
+    if (!levelGroup) return;
+    const g = new T.Group();
+    const body = new T.Mesh(new T.BoxGeometry(1.15, 0.85, 0.9), MAT.crate);
+    body.position.y = 0.43;
+    const lid = new T.Mesh(new T.BoxGeometry(1.25, 0.12, 1.0), MAT.crateLid);
+    lid.position.set(0.1, 0.92, -0.12);
+    lid.rotation.set(-0.22, 0.12, 0.06);       // knocked askew
+    g.add(body, lid);
+    [[0, 0.43, 0.46], [0, 0.43, -0.46]].forEach(([bx, by, bz]) => {
+      const band = new T.Mesh(new T.BoxGeometry(1.18, 0.1, 0.02), MAT.crateLid);
+      band.position.set(bx, by, bz * 1.01);
+      g.add(band);
+    });
+    const glow = new T.Sprite(new T.SpriteMaterial({
+      map: glowTexture(), transparent: true, depthWrite: false,
+      blending: T.AdditiveBlending, opacity: 0.55,
+    }));
+    glow.scale.set(2.6, 2.6, 1);
+    glow.position.y = 0.95;
+    g.add(glow);
+    g.position.set(x, 0, z);
+    g.rotation.y = Math.random() * Math.PI;
+    levelGroup.add(g);
+    state.stash = { group: g, glow };
+    return g;
+  }
+
+  function clearStash() {
+    const s = state.stash;
+    if (!s) return;
+    if (s.group.parent) s.group.parent.remove(s.group);
+    s.group.traverse((o) => { if (o.geometry) o.geometry.dispose(); });
+    s.glow.material.map.dispose();
+    s.glow.material.dispose();
+    state.stash = null;
+  }
+
+  function stashPosition() {
+    return state.stash ? state.stash.group.position : null;
+  }
+
   function hayBurst(x, y, z, n) {
     for (let i = 0; i < n; i++) {
       const m = new T.Mesh(new T.BoxGeometry(0.1, 0.1, 0.55), MAT.straw);
@@ -936,6 +999,7 @@ NIAH.world = (function () {
     init, resize, render, renderTo, update,
     buildLevel, layoutFor,
     setPileVisual, setCartFill, showNeedle, hideNeedle, needlePosition, setDoorOpen, hayBurst, sifterLoad,
+    showStash, clearStash, stashPosition,
     popJunk, junkPieces, clearJunkMesh, clearAllJunk, pileSurfaceAt,
     get scene() { return scene; },
     get camera() { return camera; },

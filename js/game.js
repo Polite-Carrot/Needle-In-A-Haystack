@@ -271,12 +271,82 @@ NIAH.game = (function () {
         oz: (rnd() - 0.5) * 3.4,
         revealed: false,
       },
+      /* Somebody's crate, round the back where nobody digs. `u` is how far
+         along the back of the field it sits, resolved to a spot once the barn
+         is built and its size is known. */
+      stash: { u: 0.15 + rnd() * 0.7, taken: false },
       load: [],
       loadTotal: 0,
       startedAt: Date.now(),
       sifted: 0,
       opened: 0,
     };
+  }
+
+  /* ---------------------------------------------------- behind the barn */
+
+  /* Most barns have coins in the crate. A few have something you cannot buy
+     at any price, which is the reason to go and look every time. */
+  NIAH.data.STASH = {
+    4:  { kind: 'hat',    id: 'scarecrow' },
+    8:  { kind: 'shovel', id: 'lantern' },
+    12: { kind: 'shovel', id: 'diamondx' },
+  };
+
+  function stashPrize(level) {
+    const find = NIAH.data.STASH[level];
+    if (!find) return null;
+    const item = NIAH.cosmetics.byId(NIAH.cosmetics.listFor(find.kind), find.id);
+    return item && item.id === find.id ? Object.assign({ item }, find) : null;
+  }
+
+  function stashCoins(level) {
+    return Math.max(120, Math.floor(pileHay(level) * coinsPerHay() * 0.5));
+  }
+
+  function placeStash() {
+    const lv = state.lv;
+    const b = NIAH.world.bounds;
+    // no crate in a daily: it is a time trial, and it can be replayed
+    if (!lv || !lv.stash || lv.stash.taken || !b || dailyActive()) return;
+    const x = b.fieldMinX + 3 + lv.stash.u * (b.fieldMaxX - b.fieldMinX - 6);
+    const z = b.fieldMinZ + 3 + ((lv.stash.u * 7) % 1) * (b.shellMinZ - b.fieldMinZ - 6);
+    NIAH.world.showStash(x, z);
+  }
+
+  function stashInReach() {
+    const lv = state.lv;
+    if (!lv || !lv.stash || lv.stash.taken) return false;
+    const pos = NIAH.world.stashPosition();
+    if (!pos) return false;
+    const p = NIAH.player.position;
+    return Math.hypot(p.x - pos.x, p.z - pos.z) < 3.2;
+  }
+
+  function openStash() {
+    if (!stashInReach()) return false;
+    const lv = state.lv;
+    lv.stash.taken = true;
+    const pos = NIAH.world.stashPosition();
+    if (pos) NIAH.world.hayBurst(pos.x, pos.y + 1.2, pos.z, 16);
+    NIAH.world.clearStash();
+    NIAH.audio.buy();
+    NIAH.haptics.junk();
+
+    const prize = stashPrize(lv.level);
+    if (prize) {
+      if (!state.wardrobe[prize.kind].includes(prize.id)) state.wardrobe[prize.kind].push(prize.id);
+      NIAH.audio.fanfare();
+      NIAH.haptics.win();
+      NIAH.ui.toast('📦 ' + prize.item.name + ' — yours, and not for sale. It is in My Farmer.');
+    } else {
+      const coins = stashCoins(lv.level);
+      state.coins += coins;
+      NIAH.ui.bumpCoins();
+      NIAH.ui.toast('📦 Somebody’s stash — 🪙 ' + NIAH.ui.fmt(coins));
+    }
+    save();
+    return true;
   }
 
   function buildWorldForLevel() {
@@ -287,6 +357,8 @@ NIAH.game = (function () {
     NIAH.world.hideNeedle();
     if (lv.needle.revealed) NIAH.world.showNeedle(lv.needle.pile, lv.needle.ox, lv.needle.oz);
     NIAH.world.clearAllJunk();
+    if (!lv.stash) lv.stash = { u: Math.random() * 0.8 + 0.1, taken: false };   // saves from before the crate
+    placeStash();
     if (!lv.junk) { lv.junk = makeJunk(lv.piles.length); lv.junkFound = lv.junkFound || 0; }
     lv.junk.forEach((j) => { if (j.out && !j.taken) dropJunk(j, true); });
     NIAH.helpers.sync(state.gear.hands);
@@ -1092,6 +1164,8 @@ NIAH.game = (function () {
      `need: 'shelf'` for a full Barn Shelf, `need: <n>` for n retirements. */
   function cosmeticLocked(kind, id) {
     const item = NIAH.cosmetics.byId(NIAH.cosmetics.listFor(kind), id);
+    if (ownsCosmetic(kind, id)) return false;       // yours is yours
+    if (item.need === 'stash') return true;         // only ever found, never sold
     if (item.need === 'shelf') return !state.shelfDone;
     if (typeof item.need === 'number') return (state.prestige.retires || 0) < item.need;
     return !!item.unlock && state.level < item.unlock;
@@ -1100,6 +1174,9 @@ NIAH.game = (function () {
   /* What the locked chip says, and what the footer says when you tap it. */
   function cosmeticGate(kind, id) {
     const item = NIAH.cosmetics.byId(NIAH.cosmetics.listFor(kind), id);
+    if (item.need === 'stash') {
+      return { tag: 'Found', why: item.name + ' is in a crate behind one of the barns. Go and have a look round the back.' };
+    }
     if (item.need === 'shelf') {
       return { tag: 'Shelf', why: 'Fill the Barn Shelf — every odd and end, once — to unlock ' + item.name + '.' };
     }
@@ -1230,6 +1307,9 @@ NIAH.game = (function () {
     if (needleInReach()) {
       label = 'Grab'; enabled = true;
       prompt = 'The needle! Grab it';
+    } else if (stashInReach()) {
+      label = 'Open'; enabled = true;
+      prompt = 'A crate, left round the back. Open it';
     } else if (atCart && lv.loadTotal > 0) {
       label = 'Sift'; enabled = true;
       prompt = 'Tip ' + NIAH.ui.fmt(lv.loadTotal) + ' hay onto the belt';
@@ -1302,6 +1382,7 @@ NIAH.game = (function () {
     if (phase === 'finale') { endFinale(); return; }
     if (phase !== 'play') return;
     if (grabNeedle()) return;
+    if (openStash()) return;
     if (nearCart() && state.lv.loadTotal > 0) dump();
   }
   function actionRelease() {

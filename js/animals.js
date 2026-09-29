@@ -226,10 +226,23 @@ NIAH.animals = (function () {
 
   /* ---------------------------------------------------------- flock */
 
-  function randIn(b) {
+  /* The field wraps the barn, so it is really four strips joined at the
+     corners. Each animal is given one and keeps to it — that way none of them
+     ever needs to work out how to walk around a building. */
+  function zones(b) {
+    const m = 2.2;                 // keep clear of the fence and the walls
     return {
-      x: b.yardMinX + 2.5 + Math.random() * (b.yardMaxX - b.yardMinX - 5),
-      z: b.wallMaxZ + 3 + Math.random() * (b.maxZ - b.wallMaxZ - 6),
+      front: { minX: b.fieldMinX + m, maxX: b.fieldMaxX - m, minZ: b.shellMaxZ + m, maxZ: b.fieldMaxZ - m },
+      back:  { minX: b.fieldMinX + m, maxX: b.fieldMaxX - m, minZ: b.fieldMinZ + m, maxZ: b.shellMinZ - m },
+      left:  { minX: b.fieldMinX + m, maxX: b.shellMinX - m, minZ: b.shellMinZ + m, maxZ: b.shellMaxZ - m },
+      right: { minX: b.shellMaxX + m, maxX: b.fieldMaxX - m, minZ: b.shellMinZ + m, maxZ: b.shellMaxZ - m },
+    };
+  }
+
+  function randIn(zone) {
+    return {
+      x: zone.minX + Math.random() * Math.max(0.1, zone.maxX - zone.minX),
+      z: zone.minZ + Math.random() * Math.max(0.1, zone.maxZ - zone.minZ),
     };
   }
 
@@ -237,16 +250,22 @@ NIAH.animals = (function () {
     clear();
     if (!b) return;
     group = new T.Group();
-    const roster = ['cow', 'cow', 'sheep', 'sheep', 'pig', 'chicken', 'chicken', 'chicken'];
-    roster.forEach((kind) => {
+    const z = zones(b);
+    // spread them right round, so walking the fence line turns up something new
+    const roster = [
+      ['cow', 'front'], ['cow', 'front'], ['sheep', 'left'], ['sheep', 'right'],
+      ['pig', 'back'], ['chicken', 'front'], ['chicken', 'back'], ['chicken', 'right'],
+    ];
+    roster.forEach(([kind, where]) => {
       const spec = KINDS[kind];
       const made = spec.build();
-      const at = randIn(b);
+      const zone = z[where];
+      const at = randIn(zone);
       const a = {
-        kind, spec, mesh: made.group, legs: made.legs, head: made.head, ride: made.ride,
+        kind, spec, zone, mesh: made.group, legs: made.legs, head: made.head, ride: made.ride,
         baseY: made.ride.position.y,
         x: at.x, z: at.z, yaw: Math.random() * Math.PI * 2,
-        target: randIn(b), rest: Math.random() * 4, phase: Math.random() * 7, spooked: 0,
+        target: randIn(zone), rest: Math.random() * 4, phase: Math.random() * 7, spooked: 0,
       };
       made.group.position.set(a.x, 0, a.z);
       made.group.rotation.y = a.yaw;
@@ -286,9 +305,9 @@ NIAH.animals = (function () {
       }
       a.spooked = Math.max(0, a.spooked - dt);
 
-      // keep the target inside the paddock
-      a.target.x = Math.min(bounds.yardMaxX - 2, Math.max(bounds.yardMinX + 2, a.target.x));
-      a.target.z = Math.min(bounds.maxZ - 2.5, Math.max(bounds.wallMaxZ + 2.5, a.target.z));
+      // keep the target in this animal's own strip of the field
+      a.target.x = Math.min(a.zone.maxX, Math.max(a.zone.minX, a.target.x));
+      a.target.z = Math.min(a.zone.maxZ, Math.max(a.zone.minZ, a.target.z));
 
       const tx = a.target.x - a.x, tz = a.target.z - a.z;
       const dist = Math.hypot(tx, tz);
@@ -304,7 +323,7 @@ NIAH.animals = (function () {
 
       if (!fleeing && dist < 0.8) {
         a.rest = s.rest[0] + Math.random() * (s.rest[1] - s.rest[0]);
-        a.target = randIn(bounds);
+        a.target = randIn(a.zone);
         continue;
       }
 
@@ -317,6 +336,9 @@ NIAH.animals = (function () {
       const speed = s.speed * (a.spooked > 0 ? 2.1 : 1);
       a.x += Math.sin(a.yaw) * speed * dt;
       a.z += Math.cos(a.yaw) * speed * dt;
+      // belt and braces: never inside the barn, never through the fence
+      a.x = Math.min(a.zone.maxX, Math.max(a.zone.minX, a.x));
+      a.z = Math.min(a.zone.maxZ, Math.max(a.zone.minZ, a.z));
 
       a.mesh.position.set(a.x, 0, a.z);
       a.mesh.rotation.y = a.yaw;

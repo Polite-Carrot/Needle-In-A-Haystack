@@ -33,10 +33,17 @@ network calls, no dependencies to install.
 - **A barn you walk around** — procedural low-poly barn interior and exterior,
   lanterns, dust in the light shafts, a farmhand with a hand-animated walk,
   dig and dump cycle, and a conveyor sifter running in the corner.
-- **A yard with livestock.** Walk back out of the doors and there is a fenced
-  paddock in front of the barn with two cows, two sheep, a pig and three
-  chickens wandering it, grazing, and trotting out of your way when you get
-  close. Nothing to do out there — it is somewhere to be.
+- **A field you can walk all the way round.** The barn stands in a fenced
+  field and the fence is the edge of the world — post-and-rail on all four
+  sides with a shut five-bar gate out front where the track carries on. Two
+  cows, two sheep, a pig and three chickens are spread around it, grazing and
+  trotting out of your way when you get close. Each keeps to its own strip of
+  the field, so none of them ever has to work out how to walk round a building.
+- **Something behind the barn.** Every barn has a crate round the back where
+  nobody digs. Most of them hold coins. Three hold something that is not for
+  sale at any price — the **Scarecrow Head** behind barn 4, the **Lantern
+  Spade** behind barn 8, and the **Diamond Excavator** behind barn 12. You have
+  to go and look.
 - **A walk-in cutscene** for every barn: the doors swing open, the camera
   follows you inside, and the barn number lands on screen. Skippable.
 - **Spatial search, not tapping.** Each barn has labelled piles (A, B, C…) and
