@@ -20,7 +20,14 @@ NIAH.ads = (function () {
     firstBarn: 4,          // nothing until barn 4 has been cleared
     minBarns: 3,           // barns cleared since the last interstitial
     minGapMs: 3 * 60 * 1000,
+    /* firstBarn only ever protects a brand-new player. Someone coming back at
+       barn 30 has already passed it, and would otherwise catch an ad on their
+       first barn of the session — the worst possible moment. */
+    sessionGraceMs: 90 * 1000,
   };
+
+  // a session is one page load, which for a web game is how players arrive
+  const sessionStart = Date.now();
 
   /* An SDK that never resolves would leave the player staring at nothing with
      no way on, so every call is raced against a clock. Rewarded gets far
@@ -31,6 +38,25 @@ NIAH.ads = (function () {
   let barnsSince = 0;
   let lastShownAt = 0;
   let showing = false;
+
+  /* What the player has agreed to. Both start false — nothing is assumed, and
+     the network adapter is told whenever it changes so it can pass the signal
+     on. This is the game's own surface for the choice; the ad network still
+     has to be given it through whatever consent API it provides. */
+  let consent = { personalised: false, analytics: false };
+
+  function setConsent(next) {
+    consent = {
+      personalised: !!(next && next.personalised),
+      analytics: !!(next && next.analytics),
+    };
+    tellProvider();
+  }
+  function tellProvider() {
+    if (provider && typeof provider.consent === 'function') {
+      try { provider.consent(consent); } catch (e) { /* never break play */ }
+    }
+  }
 
   function within(ms, work) {
     return new Promise((resolve, reject) => {
@@ -47,7 +73,7 @@ NIAH.ads = (function () {
     });
   }
 
-  function use(p) { provider = p || null; }
+  function use(p) { provider = p || null; tellProvider(); }
   const canInterstitial = () => !!(provider && typeof provider.interstitial === 'function');
   const canReward = () => !!(provider && typeof provider.rewarded === 'function');
 
@@ -60,6 +86,10 @@ NIAH.ads = (function () {
   function blockedBecause(level) {
     if (!canInterstitial()) return 'no provider';
     if (showing) return 'one is already up';
+    const intoSession = Date.now() - sessionStart;
+    if (intoSession < RULES.sessionGraceMs) {
+      return Math.round((RULES.sessionGraceMs - intoSession) / 1000) + 's into the session';
+    }
     if (level < RULES.firstBarn) return 'barn ' + level + ' is before barn ' + RULES.firstBarn;
     if (barnsSince < RULES.minBarns) {
       return barnsSince + (barnsSince === 1 ? ' barn' : ' barns') + ' since the last, needs ' + RULES.minBarns;
@@ -152,7 +182,8 @@ NIAH.ads = (function () {
   }
 
   return {
-    RULES, TIMEOUT, use, installStubIfAsked, stubProvider,
+    RULES, TIMEOUT, use, installStubIfAsked, stubProvider, setConsent,
+    get consent() { return { personalised: consent.personalised, analytics: consent.analytics }; },
     barnCleared, mayInterstitial, blockedBecause, interstitial, rewarded,
     snapshot, restore,
     get hasInterstitial() { return canInterstitial(); },

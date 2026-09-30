@@ -54,7 +54,7 @@
         <button class="btn ghost" id="btnMenuStats">Farm record</button>
         <button class="btn ghost danger" id="btnWipe" hidden>Erase save</button>
       </div>
-      <p class="menu-foot"><span id="menuSound">🔊 Sound on</span> · tap to toggle</p>
+      <p class="menu-foot"><span id="menuSound">🔊 Sound on</span> · <span id="menuPrivacy" class="foot-link">Privacy &amp; Data</span></p>
     </div>
   </section>
 
@@ -127,6 +127,7 @@
       <button class="btn ghost" id="btnCamera">Camera: Follow</button>
       <button class="btn ghost" id="btnSound">Sound: On</button>
       <button class="btn ghost" id="btnHaptics" hidden>Vibration: On</button>
+      <button class="btn ghost" id="btnPausePrivacy">Privacy &amp; Data</button>
       <button class="btn ghost" id="btnQuit">Quit to menu</button>
     </div>
   </section>
@@ -212,6 +213,53 @@
       <div class="win-stats" id="dailyStats"></div>
       <button class="btn big" id="btnDailyGo">Start the clock</button>
       <button class="btn ghost" id="btnDailyClose">Back</button>
+    </div>
+  </section>
+
+  <!-- ---------------------------------------------- before you start -->
+  <section id="privacyFirst" class="screen dim" aria-hidden="true">
+    <div class="card">
+      <h2>Before you start</h2>
+      <p>One thing you can switch on if you want to. It stays off unless you turn
+         it on, and can be changed at any time in Privacy &amp; Data.</p>
+      <div class="pref-list">
+        <div class="pref-row">
+          <div class="pref-text">
+            <b>Send usage data</b>
+            <span>Which barns people reach and where they get stuck, so we can fix
+                  the ones that are too hard.</span>
+          </div>
+          <button class="toggle" id="firstAnalytics" type="button" aria-pressed="false">Off</button>
+        </div>
+      </div>
+      <p class="card-foot"><a id="firstPolicy" class="policy-link" href="https://politecarrot.com/privacy" target="_blank" rel="noopener">Privacy policy</a></p>
+      <button class="btn big" id="btnPrivacyContinue">Continue</button>
+    </div>
+  </section>
+
+  <!-- --------------------------------------------- privacy &amp; data -->
+  <section id="privacyData" class="screen dim" aria-hidden="true">
+    <div class="card">
+      <h2>Privacy &amp; Data</h2>
+      <div class="pref-list">
+        <div class="pref-row">
+          <div class="pref-text">
+            <b>Send usage data</b>
+            <span>Which barns people reach and where they get stuck, so we can fix
+                  the ones that are too hard.</span>
+          </div>
+          <button class="toggle" id="dataAnalytics" type="button" aria-pressed="false">Off</button>
+        </div>
+        <div class="pref-row">
+          <div class="pref-text">
+            <b>Personalised ads</b>
+            <span>Ads matched to your interests. Left off, ads still appear but are generic.</span>
+          </div>
+          <button class="toggle" id="dataAds" type="button" aria-pressed="false">Off</button>
+        </div>
+      </div>
+      <p class="card-foot"><a id="dataPolicy" class="policy-link" href="https://politecarrot.com/privacy" target="_blank" rel="noopener">Privacy policy</a></p>
+      <button class="btn big" id="btnPrivacyDone">Done</button>
     </div>
   </section>
 

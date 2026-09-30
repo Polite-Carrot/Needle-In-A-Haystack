@@ -142,6 +142,12 @@ covers the walk into the next one. Three conditions all have to pass:
 | `firstBarn: 4` | nothing at all until barn 4 is cleared |
 | `minBarns: 3` | barns cleared since the last one |
 | `minGapMs: 180000` | and three minutes since the last one |
+| `sessionGraceMs: 90000` | and ninety seconds into this session |
+
+`firstBarn` only ever protects a brand-new player; someone returning at barn 30
+has long passed it and would otherwise catch an ad on their first barn back,
+which is the worst possible moment. The session grace covers that. A session is
+one page load.
 
 A barn takes about a minute, so a time gate on its own would land one every
 couple of levels — the barn counter is what stops that on a fast run. The
@@ -156,6 +162,28 @@ other way.
 
 Append `?adstub=1` to the URL to install a fake provider and see the placements
 work before choosing an SDK. It is only ever installed from that parameter.
+
+If you also set frequency capping in the ad network's dashboard you will be
+capping in two places and get noticeably fewer ads than either implies. Keep
+the cadence here, where it can see barns as well as the clock.
+
+## Privacy & Data
+
+Two choices, both off until the player turns them on, in the same shape as the
+other Polite Carrot titles: **Send usage data** and **Personalised ads**.
+
+The usage-data question is asked once, on a **Before you start** card, before
+anything is collected. Both live afterwards in **Privacy & Data**, reachable
+from the foot of the main menu and from the pause card. The choice is saved,
+handed to `NIAH.ads.setConsent()` — which passes it to the network adapter's
+`consent()` whenever it changes, including to an adapter plugged in later — and
+published as `window.__consentState = { analytics, ads }`, which is what the
+label's other games read.
+
+This is the game's own surface for the choice. It is **not** by itself the
+consent signalling an ad network requires: whichever SDK you use still has to
+be given the decision through its own privacy API, and in the UK and EU a
+certified CMP may be required on top. The adapter is where those meet.
 
 ## Balance
 

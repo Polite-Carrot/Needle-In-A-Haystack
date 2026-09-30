@@ -30,6 +30,7 @@ NIAH.ui = (function () {
       'dailyCard', 'dailyHead', 'dailyText', 'dailyStats', 'dailyArt', 'btnDailyGo',
       'btnDoubleOffline', 'btnDoubleBounty', 'winDoubleAmount',
       'stashCard', 'stashHead', 'stashText', 'btnDoubleStash',
+      'privacyFirst', 'privacyData', 'firstAnalytics', 'dataAnalytics', 'dataAds', 'menuPrivacy',
       'dailyNote', 'dailyTimer', 'dailyClock', 'coinBox', 'barnLabel', 'btnShop',
       'btnHaptics', 'btnPauseShop', 'btnPauseFarmer',
     ].forEach((id) => { E[id] = el(id); });
@@ -72,6 +73,36 @@ NIAH.ui = (function () {
     E.btnDoubleBounty.addEventListener('click', () => G().doubleBounty());
     E.btnDoubleStash.addEventListener('click', () => G().doubleStash());
     el('btnTakeStash').addEventListener('click', () => G().dismissStash());
+
+    /* Toggles carry their own state in aria-pressed, so the button is the
+       single source of truth for what is on screen and the label follows. */
+    const toggle = (node, on) => {
+      node.setAttribute('aria-pressed', on ? 'true' : 'false');
+      node.textContent = on ? 'On' : 'Off';
+      node.classList.toggle('on', !!on);
+    };
+    const flip = (node) => node.getAttribute('aria-pressed') !== 'true';
+    E.firstAnalytics.addEventListener('click', () => {
+      toggle(E.firstAnalytics, flip(E.firstAnalytics));
+      NIAH.audio.ui();
+    });
+    el('btnPrivacyContinue').addEventListener('click', () => {
+      G().finishPrivacyFirst(E.firstAnalytics.getAttribute('aria-pressed') === 'true');
+    });
+    E.dataAnalytics.addEventListener('click', () => {
+      const on = flip(E.dataAnalytics);
+      toggle(E.dataAnalytics, on);
+      G().setPrivacy('analytics', on);
+    });
+    E.dataAds.addEventListener('click', () => {
+      const on = flip(E.dataAds);
+      toggle(E.dataAds, on);
+      G().setPrivacy('personalisedAds', on);
+    });
+    el('btnPrivacyDone').addEventListener('click', () => screen('privacyData', false));
+    E.menuPrivacy.addEventListener('click', () => G().openPrivacy());
+    el('btnPausePrivacy').addEventListener('click', () => G().openPrivacy());
+    E.setToggle = toggle;
 
     el('btnMenuDaily').addEventListener('click', () => showDaily());
     el('btnDailyClose').addEventListener('click', () => closeDaily());
@@ -262,6 +293,21 @@ NIAH.ui = (function () {
       ? '🏆 Shelf complete — the Tin Can Hat is in My Farmer.'
       : 'Fill every slot and the Tin Can Hat is yours, plus a one-off bounty.';
     screen('shelf', true);
+    NIAH.audio.ui();
+  }
+
+  /* ------------------------------------------------ privacy & data */
+
+  function showPrivacyFirst() {
+    E.setToggle(E.firstAnalytics, false);      // off unless they turn it on
+    screen('privacyFirst', true);
+  }
+
+  function showPrivacy(privacy) {
+    const p = privacy || {};
+    E.setToggle(E.dataAnalytics, p.analytics === true);
+    E.setToggle(E.dataAds, p.personalisedAds === true);
+    screen('privacyData', true);
     NIAH.audio.ui();
   }
 
@@ -651,7 +697,7 @@ NIAH.ui = (function () {
     setMenu, setCameraLabel, renderShop, openShop, closeShop, shopIsOpen, showStats, showWin, toast,
     renderWardrobe, syncOutfitCat, syncPrestige, setOffline, clearOffline, showRetire, showShelf,
     setDailyMode, setDailyTimer, setDailyNote, showDaily, showDailyResult, setHapticsLabel,
-    setWinDouble, showStashCard,
+    setWinDouble, showStashCard, showPrivacy, showPrivacyFirst,
     bumpCoins, fmt,
     get stick() { return E.stick; },
     get stickKnob() { return E.stickKnob; },

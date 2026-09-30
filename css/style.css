@@ -63,7 +63,9 @@ html, body {
 
 /* Barn Shelf and Retire open on top of whatever asked for them — the pause
    card, the win card or the menu — so they sit a layer above the rest. */
-#shelf, #retire, #dailyCard, #stashCard { z-index: 26; }
+#shelf, #retire, #dailyCard, #stashCard, #privacyData { z-index: 26; }
+/* the first-run card is asked before anything else, so it sits above the lot */
+#privacyFirst { z-index: 30; }
 
 .card {
   width: 100%; max-width: 380px;
@@ -627,6 +629,43 @@ kbd {
   min-width: 96px;
   color: var(--gold);
 }
+
+/* -------------------------------------------------- privacy & data */
+
+.pref-list { display: grid; gap: 10px; text-align: left; margin-bottom: 4px; }
+.pref-row {
+  display: flex; align-items: center; gap: 12px;
+  background: rgba(0,0,0,.26);
+  border: 2px solid rgba(255,244,220,.12);
+  border-radius: 14px;
+  padding: 12px;
+}
+.pref-text { flex: 1; min-width: 0; }
+.pref-text b { display: block; font-size: 14px; }
+.pref-text span { display: block; font-size: 11.5px; font-weight: 600; opacity: .72; line-height: 1.45; margin-top: 3px; }
+
+/* Off is the resting state and looks like it — nothing is on by default. */
+.toggle {
+  flex: none;
+  min-width: 62px;
+  font: inherit; font-size: 13px; font-weight: 800;
+  padding: 9px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  background: rgba(0,0,0,.35);
+  border: 2px solid rgba(255,244,220,.25);
+  color: var(--cream);
+  transition: background .15s, border-color .15s, color .15s;
+}
+.toggle.on {
+  background: linear-gradient(180deg, var(--gold), #e0a728);
+  border-color: rgba(255,207,77,.75);
+  color: var(--ink);
+}
+.toggle:active { transform: translateY(2px); }
+
+.policy-link { color: var(--gold); text-decoration: underline; }
+.foot-link { color: var(--gold); text-decoration: underline; cursor: pointer; }
 
 /* ------------------------------------------------------------- ads */
 

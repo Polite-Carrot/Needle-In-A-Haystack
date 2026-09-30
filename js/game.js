@@ -81,6 +81,9 @@ NIAH.game = (function () {
     prestige: { rosettes: 0, retires: 0, best: 0 },
     daily: { day: '', bestMs: 0, lastWon: '', streak: 0, bestStreak: 0, wins: 0 },
     ads: { barnsSince: 0, lastShownAt: 0 },
+    /* analytics is null until asked, so the first-run card knows to appear.
+       Both start off: nothing is collected or personalised unless switched on. */
+    privacy: { analytics: null, personalisedAds: false },
     haptics: true,
     lastSeen: Date.now(),
     started: Date.now(),
@@ -213,6 +216,7 @@ NIAH.game = (function () {
     NIAH.haptics.on = state.haptics;
     state.ads = Object.assign({ barnsSince: 0, lastShownAt: 0 }, data.ads || {});
     NIAH.ads.restore(state.ads);
+    state.privacy = Object.assign({ analytics: null, personalisedAds: false }, data.privacy || {});
     if (!Array.isArray(state.owned) || !state.owned.length) state.owned = [0];
     state.shovel = Math.max(0, Math.min(D.SHOVELS.length - 1, state.shovel | 0));
     NIAH.audio.muted = !!state.muted;
@@ -589,6 +593,51 @@ NIAH.game = (function () {
     NIAH.audio.fanfare();
     NIAH.ui.bumpCoins();
     NIAH.ui.toast('🗄️ Barn Shelf complete — 🪙 ' + NIAH.ui.fmt(bonus) + ' and the Tin Can Hat is yours');
+  }
+
+  /* ------------------------------------------------ privacy & data */
+
+  /* The two choices live here and nowhere else, and everything that cares is
+     told whenever they change: the ad layer (which passes them to whatever
+     network adapter is plugged in) and window.__consentState, which is the
+     shape the other Polite Carrot titles publish. */
+  function applyConsent() {
+    const p = state.privacy || {};
+    const consent = { personalised: p.personalisedAds === true, analytics: p.analytics === true };
+    NIAH.ads.setConsent(consent);
+    try {
+      window.__consentState = { analytics: consent.analytics, ads: consent.personalised };
+    } catch (e) { /* never break play */ }
+  }
+
+  function setPrivacy(key, on) {
+    if (!state.privacy) state.privacy = { analytics: null, personalisedAds: false };
+    state.privacy[key] = !!on;
+    applyConsent();
+    NIAH.audio.ui();
+    NIAH.haptics.ui();
+    save();
+  }
+
+  function openPrivacy() {
+    NIAH.ui.showPrivacy(state.privacy);
+  }
+
+  /* Asked once, before anything is collected. */
+  function askPrivacyIfNew() {
+    if (state.privacy && state.privacy.analytics === null) {
+      NIAH.ui.showPrivacyFirst();
+      return true;
+    }
+    return false;
+  }
+
+  function finishPrivacyFirst(analyticsOn) {
+    if (!state.privacy) state.privacy = { analytics: null, personalisedAds: false };
+    state.privacy.analytics = !!analyticsOn;
+    applyConsent();
+    NIAH.ui.screen('privacyFirst', false);
+    save();
   }
 
   /* --------------------------------------------------- daily barn */
@@ -1360,6 +1409,7 @@ NIAH.game = (function () {
     }
 
     const lv = state.lv;
+    if (!lv) return;                  // nothing to play until a barn is built
     const pileIndex = nearestPile();
     const atCart = nearCart();
     let digging = false;
@@ -1621,6 +1671,8 @@ NIAH.game = (function () {
     phase = 'menu';
     NIAH.ui.screen('menu', true);
     NIAH.ui.setDailyNote(dailyInfo());
+    applyConsent();
+    askPrivacyIfNew();
     lastTime = performance.now();
     requestAnimationFrame(frame);
     // the barn is built and the first frame is scheduled — let the boot
@@ -1640,6 +1692,7 @@ NIAH.game = (function () {
     shelfCount, shelfComplete, claimOffline, toggleHaptics,
     startDaily, endDaily, dailyInfo, dailyActive, dailyElapsed, skipFinale: endFinale,
     doubleOffline, doubleBounty, doubleStash, dismissStash,
+    setPrivacy, openPrivacy, finishPrivacyFirst,
     get phase() { return phase; },
   };
 })();
