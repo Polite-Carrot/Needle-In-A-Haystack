@@ -80,6 +80,7 @@ NIAH.game = (function () {
     shelfDone: false,
     prestige: { rosettes: 0, retires: 0, best: 0 },
     daily: { day: '', bestMs: 0, lastWon: '', streak: 0, bestStreak: 0, wins: 0 },
+    ads: { barnsSince: 0, lastShownAt: 0 },
     haptics: true,
     lastSeen: Date.now(),
     started: Date.now(),
@@ -170,6 +171,7 @@ NIAH.game = (function () {
   }
   function save() {
     state.lastSeen = Date.now();
+    state.ads = NIAH.ads.snapshot();      // closing the tab is not a way to dodge the gap
     try { localStorage.setItem(SAVE_KEY, JSON.stringify(persistable())); } catch (e) { /* private mode */ }
   }
   function readSave() {
@@ -209,6 +211,8 @@ NIAH.game = (function () {
     state.daily = Object.assign({ day: '', bestMs: 0, lastWon: '', streak: 0, bestStreak: 0, wins: 0 }, data.daily || {});
     state.haptics = data.haptics !== false;
     NIAH.haptics.on = state.haptics;
+    state.ads = Object.assign({ barnsSince: 0, lastShownAt: 0 }, data.ads || {});
+    NIAH.ads.restore(state.ads);
     if (!Array.isArray(state.owned) || !state.owned.length) state.owned = [0];
     state.shovel = Math.max(0, Math.min(D.SHOVELS.length - 1, state.shovel | 0));
     NIAH.audio.muted = !!state.muted;
@@ -335,15 +339,21 @@ NIAH.game = (function () {
 
     const prize = stashPrize(lv.level);
     if (prize) {
+      /* The exclusives are never doubled and never behind an ad — the whole
+         point of them is that they cannot be had any other way. */
       if (!state.wardrobe[prize.kind].includes(prize.id)) state.wardrobe[prize.kind].push(prize.id);
       NIAH.audio.fanfare();
       NIAH.haptics.win();
-      NIAH.ui.toast('📦 ' + prize.item.name + ' — yours, and not for sale. It is in My Farmer.');
+      stashPot = 0;
+      phase = 'stash';
+      NIAH.ui.showStashCard({ prize: prize.item.name, desc: prize.item.desc });
     } else {
       const coins = stashCoins(lv.level);
       state.coins += coins;
+      stashPot = coins;
+      phase = 'stash';
       NIAH.ui.bumpCoins();
-      NIAH.ui.toast('📦 Somebody’s stash — 🪙 ' + NIAH.ui.fmt(coins));
+      NIAH.ui.showStashCard({ coins, canDouble: NIAH.ads.hasRewarded });
     }
     save();
     return true;
@@ -767,6 +777,69 @@ NIAH.game = (function () {
     save();
   }
 
+  /* ----------------------------------------------------- rewarded doubles */
+
+  /* Three places where the player already has coins in hand and can choose to
+     make them two: the crew's night's work, the needle bounty, and the crate.
+     Each pays the same amount again, and each is opt-in — the plain Collect
+     button is always there and always works. */
+  let bountyPot = 0, stashPot = 0;
+
+  function doubleOffline() {
+    if (offlinePot <= 0) return;
+    const extra = offlinePot;
+    NIAH.ads.rewarded().then((watched) => {
+      state.coins += extra + (watched ? extra : 0);
+      offlinePot = 0;
+      NIAH.audio.coin();
+      if (watched) { NIAH.audio.fanfare(); NIAH.haptics.win(); }
+      NIAH.ui.bumpCoins();
+      NIAH.ui.clearOffline();
+      if (watched) NIAH.ui.toast('📺 Doubled — 🪙 ' + NIAH.ui.fmt(extra * 2) + ' from the crew');
+      save();
+    });
+  }
+
+  function doubleBounty() {
+    if (bountyPot <= 0) return;
+    const extra = bountyPot;
+    bountyPot = 0;
+    NIAH.ui.setWinDouble(0);
+    NIAH.ads.rewarded().then((watched) => {
+      if (!watched) return;
+      state.coins += extra;
+      NIAH.audio.fanfare();
+      NIAH.haptics.win();
+      NIAH.ui.bumpCoins();
+      NIAH.ui.toast('📺 Bounty doubled — 🪙 ' + NIAH.ui.fmt(extra) + ' more');
+      save();
+    });
+  }
+
+  function doubleStash() {
+    if (stashPot <= 0) { dismissStash(); return; }
+    const extra = stashPot;
+    stashPot = 0;
+    NIAH.ads.rewarded().then((watched) => {
+      if (watched) {
+        state.coins += extra;
+        NIAH.audio.fanfare();
+        NIAH.haptics.win();
+        NIAH.ui.bumpCoins();
+        NIAH.ui.toast('📺 Doubled — 🪙 ' + NIAH.ui.fmt(extra) + ' more out of the crate');
+        save();
+      }
+      dismissStash();
+    });
+  }
+
+  /* The card is a modal, so the barn holds still behind it. */
+  function dismissStash() {
+    stashPot = 0;
+    NIAH.ui.screen('stashCard', false);
+    if (phase === 'stash') phase = 'play';
+  }
+
   function needleInReach() {
     const lv = state.lv;
     if (!lv || !lv.needle.revealed) return false;
@@ -966,8 +1039,12 @@ NIAH.game = (function () {
       state.needles++;
       const bonus = Math.max(50, Math.floor(pileHay(state.level) * coinsPerHay() * 0.6));
       state.coins += bonus;
+      // only campaign barns count toward the interstitial gate
+      NIAH.ads.barnCleared();
+      bountyPot = bonus;
       const secs = Math.round((Date.now() - lv.startedAt) / 1000);
       finale.data = {
+        bounty: bonus,
         text: `You pulled it out of pile ${lv.piles[lv.needle.pile].name}, `
           + `${Math.round(lv.needle.depth * 100)}% of the way down. Barn ${lv.level} is done.`,
         rows: [
@@ -1060,12 +1137,20 @@ NIAH.game = (function () {
     else NIAH.ui.showWin(finale.data);
   }
 
+  /* The ad goes here, not straight after the needle: the finale and the win
+     card are the payoff, and an interstitial on top of them lands badly. By
+     the time this is tapped the player has had both, and the ad covers the
+     walk into the next barn. */
   function nextBarn() {
-    state.level++;
-    state.lv = makeLevel(state.level);
+    const cleared = state.level;
     NIAH.ui.screen('win', false);
     NIAH.ui.closeShop();
-    startLevel(true);
+    NIAH.ads.interstitial(cleared).then(() => {
+      state.level = cleared + 1;
+      state.lv = makeLevel(state.level);
+      save();
+      startLevel(true);
+    });
   }
 
   function startNewGame() {
@@ -1526,6 +1611,7 @@ NIAH.game = (function () {
     const L = NIAH.world.layout;
     NIAH.player.place(0, L.doorZ + 9, Math.PI);
     NIAH.haptics.on = state.haptics !== false;
+    NIAH.ads.installStubIfAsked();        // ?adstub in the URL, for previewing placements
     NIAH.ui.setCameraLabel(state.camera);
     NIAH.ui.setHapticsLabel(state.haptics !== false);
     NIAH.ui.setMenu(saved);
@@ -1553,6 +1639,7 @@ NIAH.game = (function () {
     retire, openRetire, canRetire, retireGain, prestigeMult, prestigeGrunt, rosettes, unlockAt,
     shelfCount, shelfComplete, claimOffline, toggleHaptics,
     startDaily, endDaily, dailyInfo, dailyActive, dailyElapsed, skipFinale: endFinale,
+    doubleOffline, doubleBounty, doubleStash, dismissStash,
     get phase() { return phase; },
   };
 })();

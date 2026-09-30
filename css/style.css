@@ -63,7 +63,7 @@ html, body {
 
 /* Barn Shelf and Retire open on top of whatever asked for them — the pause
    card, the win card or the menu — so they sit a layer above the rest. */
-#shelf, #retire, #dailyCard { z-index: 26; }
+#shelf, #retire, #dailyCard, #stashCard { z-index: 26; }
 
 .card {
   width: 100%; max-width: 380px;
@@ -627,6 +627,40 @@ kbd {
   min-width: 96px;
   color: var(--gold);
 }
+
+/* ------------------------------------------------------------- ads */
+
+/* Every rewarded offer is opt-in and sits beside a button that already does
+   the job for free, so it reads as an extra rather than a toll. */
+.btn.watch {
+  background: none;
+  border: 2px dashed rgba(255,207,77,.5);
+  color: var(--gold);
+  box-shadow: none;
+  font-size: 13px;
+  padding: 11px 14px;
+}
+.btn.watch:active { transform: translateY(2px); box-shadow: none; }
+.away-card .btn.watch { margin-top: 8px; }
+
+/* The test placeholder, only ever shown from ?adstub in the URL. */
+.ad-stub {
+  position: fixed; inset: 0; z-index: 90;
+  display: grid; place-items: center;
+  background: rgba(8,6,3,.88);
+}
+.ad-stub-card {
+  background: #241a0e;
+  border: 2px dashed rgba(255,207,77,.45);
+  border-radius: 18px;
+  padding: 26px 30px;
+  text-align: center;
+  color: var(--cream);
+  max-width: 300px;
+}
+.ad-stub-tag { font-size: 10px; letter-spacing: 2px; text-transform: uppercase; opacity: .55; font-weight: 800; }
+.ad-stub-label { font-size: 20px; font-weight: 900; margin: 8px 0 2px; color: var(--gold); }
+.ad-stub-count { font-size: 13px; opacity: .7; margin-bottom: 14px; font-variant-numeric: tabular-nums; }
 
 .win-stats { background: rgba(0,0,0,.28); border-radius: 14px; padding: 10px 14px; font-size: 13px; text-align: left; }
 .win-stats div { display: flex; justify-content: space-between; padding: 4px 0; }

@@ -28,6 +28,8 @@ NIAH.ui = (function () {
       'btnMenuRetire', 'btnPauseRetire', 'btnWinRetire', 'retire', 'retireText', 'retireStats',
       'shelf', 'shelfGrid', 'shelfSub', 'shelfFoot',
       'dailyCard', 'dailyHead', 'dailyText', 'dailyStats', 'dailyArt', 'btnDailyGo',
+      'btnDoubleOffline', 'btnDoubleBounty', 'winDoubleAmount',
+      'stashCard', 'stashHead', 'stashText', 'btnDoubleStash',
       'dailyNote', 'dailyTimer', 'dailyClock', 'coinBox', 'barnLabel', 'btnShop',
       'btnHaptics', 'btnPauseShop', 'btnPauseFarmer',
     ].forEach((id) => { E[id] = el(id); });
@@ -66,6 +68,10 @@ NIAH.ui = (function () {
     el('closeRetire').addEventListener('click', () => screen('retire', false));
     el('btnDoRetire').addEventListener('click', () => G().retire());
     el('btnCollectOffline').addEventListener('click', () => G().claimOffline());
+    E.btnDoubleOffline.addEventListener('click', () => G().doubleOffline());
+    E.btnDoubleBounty.addEventListener('click', () => G().doubleBounty());
+    E.btnDoubleStash.addEventListener('click', () => G().doubleStash());
+    el('btnTakeStash').addEventListener('click', () => G().dismissStash());
 
     el('btnMenuDaily').addEventListener('click', () => showDaily());
     el('btnDailyClose').addEventListener('click', () => closeDaily());
@@ -224,6 +230,7 @@ NIAH.ui = (function () {
       + '  That is ' + (away.barns >= 0.995 ? 'a full barn' : Math.round(away.barns * 100) + '% of a barn')
       + ' worth of hay.';
     E.offlineCoins.textContent = fmt(away.coins);
+    E.btnDoubleOffline.hidden = !NIAH.ads.hasRewarded;
   }
   function clearOffline() { E.offlineCard.hidden = true; }
 
@@ -609,7 +616,34 @@ NIAH.ui = (function () {
   function showWin(data) {
     E.winText.textContent = data.text;
     E.winStats.innerHTML = data.rows.map((r) => '<div><span>' + r[0] + '</span><span>' + r[1] + '</span></div>').join('');
+    setWinDouble(data.bounty || 0);
     screen('win', true);
+  }
+
+  /* The bounty is already a row on this card, so the offer sits right under
+     it. Passing 0 takes it away — once it has been used it is gone. */
+  function setWinDouble(bounty) {
+    if (!E.btnDoubleBounty) return;
+    const on = bounty > 0 && NIAH.ads.hasRewarded;
+    E.btnDoubleBounty.hidden = !on;
+    if (on) E.winDoubleAmount.textContent = fmt(bounty);
+  }
+
+  function showStashCard(d) {
+    if (d.prize) {
+      E.stashHead.textContent = 'Not for sale';
+      E.stashText.textContent = d.prize + ' — ' + (d.desc || '') + ' It is in My Farmer.';
+      E.btnDoubleStash.hidden = true;
+      el('btnTakeStash').textContent = 'Take it';
+    } else {
+      E.stashHead.textContent = 'Somebody\u2019s stash';
+      E.stashText.textContent = 'Left round the back of the barn, and nobody has been for it. '
+        + '\ud83e\ude99 ' + fmt(d.coins) + '.';
+      E.btnDoubleStash.hidden = !d.canDouble;
+      el('btnTakeStash').textContent = d.canDouble ? 'No thanks, take it' : 'Take it';
+    }
+    screen('stashCard', true);
+    NIAH.audio.ui();
   }
 
   return {
@@ -617,6 +651,7 @@ NIAH.ui = (function () {
     setMenu, setCameraLabel, renderShop, openShop, closeShop, shopIsOpen, showStats, showWin, toast,
     renderWardrobe, syncOutfitCat, syncPrestige, setOffline, clearOffline, showRetire, showShelf,
     setDailyMode, setDailyTimer, setDailyNote, showDaily, showDailyResult, setHapticsLabel,
+    setWinDouble, showStashCard,
     bumpCoins, fmt,
     get stick() { return E.stick; },
     get stickKnob() { return E.stickKnob; },

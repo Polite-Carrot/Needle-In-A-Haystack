@@ -40,6 +40,7 @@
         <div class="away-head">While you were away</div>
         <div class="away-body" id="offlineText"></div>
         <button class="btn small" id="btnCollectOffline">Collect 🪙 <span id="offlineCoins">0</span></button>
+        <button class="btn small watch" id="btnDoubleOffline" hidden>📺 Watch to double it</button>
       </div>
 
       <div class="menu-buttons">
@@ -214,6 +215,17 @@
     </div>
   </section>
 
+  <!-- -------------------------------------------------- the crate -->
+  <section id="stashCard" class="screen dim" aria-hidden="true">
+    <div class="card">
+      <div class="needle-art">📦</div>
+      <h2 id="stashHead">Somebody's stash</h2>
+      <p id="stashText"></p>
+      <button class="btn watch" id="btnDoubleStash" hidden>📺 Watch to double it</button>
+      <button class="btn big" id="btnTakeStash">Take it</button>
+    </div>
+  </section>
+
   <!-- ------------------------------------------------ level complete -->
   <section id="win" class="screen dim" aria-hidden="true">
     <div class="card">
@@ -221,6 +233,7 @@
       <h2>Needle found!</h2>
       <p id="winText"></p>
       <div class="win-stats" id="winStats"></div>
+      <button class="btn watch" id="btnDoubleBounty" hidden>📺 Double the bounty — 🪙 <span id="winDoubleAmount">0</span></button>
       <button class="btn big" id="btnNextBarn">On to the next barn</button>
       <button class="btn ghost" id="btnWinShop">Spend coins first</button>
       <button class="btn ghost" id="btnWinFarmer">My Farmer</button>
@@ -267,6 +280,7 @@ if ('serviceWorker' in navigator && location.protocol.indexOf('http') === 0) {
 <script src="vendor/three.min.js"></script>
 <script src="js/audio.js"></script>
 <script src="js/haptics.js"></script>
+<script src="js/ads.js"></script>
 <script src="js/animals.js"></script>
 <script src="js/world.js"></script>
 <script src="js/cosmetics.js"></script>

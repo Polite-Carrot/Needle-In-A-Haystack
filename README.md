@@ -122,6 +122,41 @@ network calls, no dependencies to install.
   Merge and Tide Runner so every title opens the same way. It holds for the house
   beat, waits for the barn to finish building, and hard-caps at 4s.
 
+## Ads
+
+There is no ad network in the repository. `js/ads.js` owns *when* an ad is
+allowed and hands the showing to a provider you plug in with
+`NIAH.ads.use({ interstitial, rewarded })`; with nothing plugged in every call
+resolves immediately and the game plays exactly as it does without it. A
+provider that fails, or one that never comes back, is treated as "no ad" — an
+interstitial can never strand a player between barns, and a reward is only ever
+paid when the provider says it was watched to the end.
+
+**One interstitial**, on the way out of the win card — not on the needle. The
+finale and the win card are the payoff; an ad on top of them lands badly. By
+the time "On to the next barn" is tapped the player has had both, and the ad
+covers the walk into the next one. Three conditions all have to pass:
+
+| | |
+| --- | --- |
+| `firstBarn: 4` | nothing at all until barn 4 is cleared |
+| `minBarns: 3` | barns cleared since the last one |
+| `minGapMs: 180000` | and three minutes since the last one |
+
+A barn takes about a minute, so a time gate on its own would land one every
+couple of levels — the barn counter is what stops that on a fast run. The
+counters ride along in the save, so closing the tab is not a way to dodge the
+gap. The Daily Barn is excluded outright: it is timed and competitive.
+
+**Three rewarded doubles**, each beside a button that already does the job for
+free — the crew's night's work on the menu, the needle bounty on the win card,
+and the crate behind the barn. The three exclusive finds are never doubled and
+never behind an ad; the whole point of them is that they cannot be had any
+other way.
+
+Append `?adstub=1` to the URL to install a fake provider and see the placements
+work before choosing an SDK. It is only ever installed from that parameter.
+
 ## Balance
 
 Each barn has more piles and bigger piles than the last (`×1.5` hay), and pays
@@ -180,6 +215,7 @@ the service worker the whole origin as its scope.
 | `js/animals.js` | The yard livestock: how they are built and how they wander |
 | `js/audio.js` | WebAudio sound effects |
 | `js/haptics.js` | Vibration patterns, and the feature test that hides them on iOS |
+| `js/ads.js` | When an ad is allowed, and the provider seam — no network in it |
 | `sw.js` | Service worker: precaches the shell so the game runs offline |
 | `manifest.webmanifest` | Web app manifest — name, colours, icons, display mode |
 | `assets/` | Polite Carrot logo and wordmark, plus the app icon in SVG and PNG |
